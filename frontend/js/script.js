@@ -61,7 +61,28 @@ document.addEventListener('DOMContentLoaded', () => {
         auditApplicantInfo: document.getElementById('audit-applicant-info'),
         auditSubmitBtn: document.getElementById('audit-submit-btn'),
         blacklistList: document.getElementById('blacklist-list'),
-        blacklistCount: document.getElementById('blacklist-count')
+        blacklistCount: document.getElementById('blacklist-count'),
+        calcPickup: document.getElementById('calc-pickup'),
+        calcDelivery: document.getElementById('calc-delivery'),
+        calcSize: document.getElementById('calc-size'),
+        calcUrgent: document.getElementById('calc-urgent'),
+        calcRain: document.getElementById('calc-rain'),
+        calcDistanceInfo: document.getElementById('calc-distance-info'),
+        calcRange: document.getElementById('calc-range'),
+        calcBarFill: document.getElementById('calc-bar-fill'),
+        calcBarMarker: document.getElementById('calc-bar-marker'),
+        calcSuggested: document.getElementById('calc-suggested'),
+        calcBase: document.getElementById('calc-base'),
+        calcDistanceFee: document.getElementById('calc-distance-fee'),
+        calcSizeFee: document.getElementById('calc-size-fee'),
+        calcUrgentRow: document.getElementById('calc-urgent-row'),
+        calcUrgentFee: document.getElementById('calc-urgent-fee'),
+        calcRainRow: document.getElementById('calc-rain-row'),
+        calcRainFee: document.getElementById('calc-rain-fee'),
+        calcTotal: document.getElementById('calc-total'),
+        calcSaveBtn: document.getElementById('calc-save-btn'),
+        calcApplyBtn: document.getElementById('calc-apply-btn'),
+        calcSavedList: document.getElementById('calc-saved-list')
     };
 
     let auditFilter = 'pending';
@@ -226,6 +247,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tab === 'leaderboard') loadLeaderboard();
             if (tab === 'cert-audit') loadAuditList();
             if (tab === 'blacklist') loadBlacklist();
+            if (tab === 'price-calc') loadPriceCalculator();
         };
     });
 
@@ -1073,6 +1095,262 @@ document.addEventListener('DOMContentLoaded', () => {
         t.textContent = msg;
         t.classList.remove('hidden');
         setTimeout(() => t.classList.add('hidden'), 3000);
+    }
+
+    // --- Price Calculator ---
+    const STATION_COORDS = {
+        '菜鸟驿站-南门': { x: 0, y: 0 },
+        '顺丰速运-西门': { x: -2, y: 1 },
+        '京东派-北区': { x: 1, y: 3 },
+        '中通圆通-东门': { x: 3, y: 1 }
+    };
+
+    const DORM_COORDS = {
+        '1号楼': { x: 0, y: 2 },
+        '2号楼': { x: 0.5, y: 2.2 },
+        '3号楼': { x: 1, y: 2.5 },
+        '4号楼': { x: 1.5, y: 2.8 },
+        '5号楼': { x: 2, y: 3 },
+        '6号楼': { x: -0.5, y: 2.5 },
+        '7号楼': { x: -1, y: 2.8 },
+        '8号楼': { x: -1.5, y: 3.2 },
+        '9号楼': { x: 0.5, y: 3.5 },
+        '10号楼': { x: 1, y: 3.8 },
+        '11号楼': { x: 1.5, y: 4 },
+        '12号楼': { x: 2, y: 4.2 },
+        '13号楼': { x: 2.5, y: 3.5 },
+        '14号楼': { x: -1, y: 4 },
+        '15号楼': { x: -2, y: 3.5 }
+    };
+
+    const SIZE_FEE = {
+        small: { label: '小件', fee: 0 },
+        medium: { label: '中件', fee: 0.5 },
+        large: { label: '大件', fee: 1.5 },
+        xlarge: { label: '超大件', fee: 3 }
+    };
+
+    const BASE_FEE = 3;
+    const URGENCY_FEE = 1.5;
+    const RAIN_FEE = 1;
+    const MIN_PRICE = 2;
+    const MAX_PRICE = 20;
+
+    function calcDistance(pickup, delivery) {
+        const p1 = STATION_COORDS[pickup] || { x: 0, y: 0 };
+        const p2 = DORM_COORDS[delivery] || { x: 0, y: 0 };
+        const dx = p1.x - p2.x;
+        const dy = p1.y - p2.y;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function distanceToFee(distance) {
+        if (distance <= 1) return 0;
+        if (distance <= 2) return 0.5;
+        if (distance <= 3) return 1;
+        if (distance <= 4) return 1.5;
+        return 2;
+    }
+
+    function calculatePrice() {
+        const pickup = elements.calcPickup.value;
+        const delivery = elements.calcDelivery.value;
+        const size = elements.calcSize.value;
+        const isUrgent = elements.calcUrgent.checked;
+        const isRain = elements.calcRain.checked;
+
+        const distance = calcDistance(pickup, delivery);
+        const distanceFee = distanceToFee(distance);
+        const sizeFee = SIZE_FEE[size].fee;
+        const urgentFee = isUrgent ? URGENCY_FEE : 0;
+        const rainFee = isRain ? RAIN_FEE : 0;
+
+        const total = BASE_FEE + distanceFee + sizeFee + urgentFee + rainFee;
+        const clampedTotal = Math.max(MIN_PRICE, Math.min(MAX_PRICE, total));
+        const rangeMin = Math.max(MIN_PRICE, clampedTotal - 1);
+        const rangeMax = Math.min(MAX_PRICE, clampedTotal + 1);
+
+        return {
+            pickup,
+            delivery,
+            size,
+            isUrgent,
+            isRain,
+            distance: distance.toFixed(1),
+            distanceFee,
+            sizeFee,
+            urgentFee,
+            rainFee,
+            baseFee: BASE_FEE,
+            total: clampedTotal,
+            rangeMin: rangeMin.toFixed(2),
+            rangeMax: rangeMax.toFixed(2)
+        };
+    }
+
+    function updateCalcDisplay(result) {
+        elements.calcDistanceInfo.textContent = `预估距离：约 ${result.distance} 校园单位 | 距离越远费用越高`;
+        elements.calcRange.textContent = `¥${result.rangeMin} - ¥${result.rangeMax}`;
+        elements.calcSuggested.textContent = result.total.toFixed(2);
+        elements.calcBase.textContent = `¥${result.baseFee.toFixed(2)}`;
+        elements.calcDistanceFee.textContent = `¥${result.distanceFee.toFixed(2)}`;
+        elements.calcSizeFee.textContent = `¥${result.sizeFee.toFixed(2)}`;
+
+        if (result.isUrgent) {
+            elements.calcUrgentRow.style.display = 'flex';
+            elements.calcUrgentFee.textContent = `¥${result.urgentFee.toFixed(2)}`;
+        } else {
+            elements.calcUrgentRow.style.display = 'none';
+        }
+
+        if (result.isRain) {
+            elements.calcRainRow.style.display = 'flex';
+            elements.calcRainFee.textContent = `¥${result.rainFee.toFixed(2)}`;
+        } else {
+            elements.calcRainRow.style.display = 'none';
+        }
+
+        elements.calcTotal.textContent = `¥${result.total.toFixed(2)}`;
+
+        const percent = ((result.total - MIN_PRICE) / (MAX_PRICE - MIN_PRICE)) * 100;
+        elements.calcBarFill.style.width = `${percent}%`;
+        elements.calcBarMarker.style.left = `${percent}%`;
+    }
+
+    function loadPriceCalculator() {
+        updateCalcDisplay(calculatePrice());
+        loadSavedSchemes();
+    }
+
+    if (elements.calcPickup) {
+        [elements.calcPickup, elements.calcDelivery, elements.calcSize].forEach(el => {
+            el.onchange = () => updateCalcDisplay(calculatePrice());
+        });
+        elements.calcUrgent.onchange = () => updateCalcDisplay(calculatePrice());
+        elements.calcRain.onchange = () => updateCalcDisplay(calculatePrice());
+    }
+
+    function loadSavedSchemes() {
+        if (!currentUser) return;
+        const key = `price_schemes_${currentUser.username}`;
+        const schemes = JSON.parse(localStorage.getItem(key) || '[]');
+
+        if (schemes.length === 0) {
+            elements.calcSavedList.innerHTML = `
+                <div style="text-align: center; color: #94a3b8; padding: 30px; font-size: 0.9rem;">
+                    暂无保存的方案
+                </div>
+            `;
+            return;
+        }
+
+        let html = '';
+        schemes.forEach((scheme, idx) => {
+            const sizeLabel = SIZE_FEE[scheme.size]?.label || scheme.size;
+            html += `
+                <div class="saved-scheme-card" onclick="applySavedScheme(${idx})">
+                    <div class="saved-scheme-header">
+                        <span class="saved-scheme-name">${scheme.name}</span>
+                        <button class="saved-scheme-delete" onclick="event.stopPropagation(); deleteSavedScheme(${idx})">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </div>
+                    <div class="saved-scheme-info">
+                        <div><i class="fas fa-store" style="width: 14px;"></i> ${scheme.pickup}</div>
+                        <div><i class="fas fa-home" style="width: 14px;"></i> ${scheme.delivery}</div>
+                        <div><i class="fas fa-box" style="width: 14px;"></i> ${sizeLabel}</div>
+                    </div>
+                    <div class="saved-scheme-price">
+                        <span>¥${scheme.total.toFixed(2)}</span>
+                        <div class="tags">
+                            ${scheme.isUrgent ? '<span class="saved-tag urgent">加急</span>' : ''}
+                            ${scheme.isRain ? '<span class="saved-tag rain">雨天</span>' : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        elements.calcSavedList.innerHTML = html;
+    }
+
+    function getSavedSchemes() {
+        if (!currentUser) return [];
+        const key = `price_schemes_${currentUser.username}`;
+        return JSON.parse(localStorage.getItem(key) || '[]');
+    }
+
+    function saveSchemesToStorage(schemes) {
+        if (!currentUser) return;
+        const key = `price_schemes_${currentUser.username}`;
+        localStorage.setItem(key, JSON.stringify(schemes));
+    }
+
+    if (elements.calcSaveBtn) {
+        elements.calcSaveBtn.onclick = () => {
+            if (!currentUser) {
+                showToast('请先登录');
+                return;
+            }
+            const result = calculatePrice();
+            const schemeName = prompt('请输入方案名称（如：南门→13号楼常规）', '我的方案');
+            if (!schemeName || !schemeName.trim()) return;
+
+            const schemes = getSavedSchemes();
+            schemes.unshift({
+                ...result,
+                name: schemeName.trim(),
+                createdAt: Date.now()
+            });
+
+            if (schemes.length > 10) schemes.pop();
+            saveSchemesToStorage(schemes);
+            loadSavedSchemes();
+            showToast('方案已保存！');
+        };
+    }
+
+    window.applySavedScheme = (idx) => {
+        if (!currentUser) return;
+        const schemes = getSavedSchemes();
+        const scheme = schemes[idx];
+        if (!scheme) return;
+
+        elements.calcPickup.value = scheme.pickup;
+        elements.calcDelivery.value = scheme.delivery;
+        elements.calcSize.value = scheme.size;
+        elements.calcUrgent.checked = scheme.isUrgent;
+        elements.calcRain.checked = scheme.isRain;
+        updateCalcDisplay(calculatePrice());
+        showToast('已应用方案');
+    };
+
+    window.deleteSavedScheme = (idx) => {
+        if (!currentUser) return;
+        if (!confirm('确定删除该方案？')) return;
+        const schemes = getSavedSchemes();
+        schemes.splice(idx, 1);
+        saveSchemesToStorage(schemes);
+        loadSavedSchemes();
+        showToast('已删除');
+    };
+
+    if (elements.calcApplyBtn) {
+        elements.calcApplyBtn.onclick = () => {
+            const result = calculatePrice();
+            document.getElementById('pkg-pickup').value = result.pickup;
+            document.getElementById('pkg-delivery').value = result.delivery;
+            document.getElementById('pkg-reward').value = result.total.toFixed(2);
+
+            let pkgDesc = '';
+            const sizeLabel = SIZE_FEE[result.size]?.label || '常规';
+            pkgDesc += `${result.delivery.slice(0, -1)}${result.delivery.slice(-1)}${sizeLabel}包裹`;
+            if (result.isUrgent) pkgDesc += '【加急】';
+            if (result.isRain) pkgDesc += '【雨天】';
+            document.getElementById('pkg-name').value = pkgDesc;
+
+            document.querySelector('[data-tab="post-task"]').click();
+            showToast('已带入发布表单，请确认后发布');
+        };
     }
 
     // Init

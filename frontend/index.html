@@ -69,6 +69,7 @@
             <nav class="nav-menu">
                 <a href="#" class="nav-item active" data-tab="dashboard"><i class="fas fa-th-large"></i> 任务大厅</a>
                 <a href="#" class="nav-item" data-tab="my-orders"><i class="fas fa-clipboard-list"></i> 我的订单</a>
+                <a href="#" class="nav-item" data-tab="price-calc"><i class="fas fa-calculator"></i> 报价计算器</a>
                 <a href="#" class="nav-item" data-tab="post-task"><i class="fas fa-plus-circle"></i> 发布悬赏</a>
                 <a href="#" class="nav-item" data-tab="cert-apply" id="nav-cert-apply"><i class="fas fa-id-card"></i> 跑腿认证</a>
                 <a href="#" class="nav-item" data-tab="cert-record" id="nav-cert-record"><i class="fas fa-history"></i> 认证记录</a>
@@ -132,6 +133,128 @@
                 <div class="order-grid" id="my-orders-list"></div>
             </section>
 
+            <!-- Price Calculator -->
+            <section class="view-section hidden" id="price-calc-tab">
+                <div class="section-header">
+                    <h2><i class="fas fa-calculator"></i> 快递报价计算器</h2>
+                </div>
+                <div class="calc-container">
+                    <div class="calc-main">
+                        <div class="form-container" style="max-width: none; padding: 30px;">
+                            <h3 style="margin-bottom: 20px; font-size: 1.15rem;"><i class="fas fa-sliders-h" style="color: var(--primary);"></i> 参数设置</h3>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>取件驿站</label>
+                                    <select id="calc-pickup">
+                                        <option value="菜鸟驿站-南门">菜鸟驿站-南门</option>
+                                        <option value="顺丰速运-西门">顺丰速运-西门</option>
+                                        <option value="京东派-北区">京东派-北区</option>
+                                        <option value="中通圆通-东门">中通圆通-东门</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>送达宿舍楼栋</label>
+                                    <select id="calc-delivery">
+                                        <option value="1号楼">1号楼</option>
+                                        <option value="2号楼">2号楼</option>
+                                        <option value="3号楼">3号楼</option>
+                                        <option value="4号楼">4号楼</option>
+                                        <option value="5号楼">5号楼</option>
+                                        <option value="6号楼">6号楼</option>
+                                        <option value="7号楼">7号楼</option>
+                                        <option value="8号楼">8号楼</option>
+                                        <option value="9号楼">9号楼</option>
+                                        <option value="10号楼">10号楼</option>
+                                        <option value="11号楼">11号楼</option>
+                                        <option value="12号楼">12号楼</option>
+                                        <option value="13号楼">13号楼</option>
+                                        <option value="14号楼">14号楼</option>
+                                        <option value="15号楼">15号楼</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>包裹大小</label>
+                                    <select id="calc-size">
+                                        <option value="small">小件（信封、小包裹）</option>
+                                        <option value="medium" selected>中件（常规快递盒）</option>
+                                        <option value="large">大件（纸箱、重物）</option>
+                                        <option value="xlarge">超大件（家具、家电）</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>附加条件</label>
+                                    <div class="calc-toggles">
+                                        <label class="calc-toggle">
+                                            <input type="checkbox" id="calc-urgent">
+                                            <span class="toggle-slider"></span>
+                                            <span class="toggle-label"><i class="fas fa-bolt" style="color: #f59e0b;"></i> 加急配送</span>
+                                        </label>
+                                        <label class="calc-toggle">
+                                            <input type="checkbox" id="calc-rain">
+                                            <span class="toggle-slider"></span>
+                                            <span class="toggle-label"><i class="fas fa-cloud-rain" style="color: #3b82f6;"></i> 雨天配送</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="calc-pricing-note">
+                                <i class="fas fa-info-circle"></i>
+                                <span id="calc-distance-info">距离：计算中...</span>
+                            </div>
+                        </div>
+
+                        <div class="calc-result-card">
+                            <div class="calc-result-header">
+                                <h3><i class="fas fa-coins" style="color: var(--accent);"></i> 建议悬赏金额</h3>
+                                <span class="calc-result-range" id="calc-range">¥3.00 - ¥5.00</span>
+                            </div>
+                            <div class="price-bar-container">
+                                <div class="price-bar">
+                                    <div class="price-bar-fill" id="calc-bar-fill"></div>
+                                    <div class="price-bar-marker" id="calc-bar-marker"></div>
+                                </div>
+                                <div class="price-bar-labels">
+                                    <span>¥2</span>
+                                    <span>¥5</span>
+                                    <span>¥10</span>
+                                    <span>¥15</span>
+                                    <span>¥20</span>
+                                </div>
+                            </div>
+                            <div class="calc-result-main">
+                                <div class="calc-price-display">
+                                    <span class="price-currency">¥</span>
+                                    <span class="price-value" id="calc-suggested">4.00</span>
+                                </div>
+                                <div class="calc-result-details">
+                                    <div class="detail-row"><span>基础配送费</span><span id="calc-base">¥3.00</span></div>
+                                    <div class="detail-row"><span>距离附加</span><span id="calc-distance-fee">¥0.50</span></div>
+                                    <div class="detail-row"><span>包裹大小</span><span id="calc-size-fee">¥0.50</span></div>
+                                    <div class="detail-row" id="calc-urgent-row" style="display: none;"><span>加急费</span><span id="calc-urgent-fee">¥0.00</span></div>
+                                    <div class="detail-row" id="calc-rain-row" style="display: none;"><span>雨天补贴</span><span id="calc-rain-fee">¥0.00</span></div>
+                                    <div class="detail-row total-row"><span>建议价格</span><span id="calc-total">¥4.00</span></div>
+                                </div>
+                            </div>
+                            <div class="calc-actions">
+                                <button class="btn-outline" id="calc-save-btn"><i class="fas fa-save"></i> 保存为常用方案</button>
+                                <button class="btn-primary" id="calc-apply-btn"><i class="fas fa-paper-plane"></i> 带入发布表单</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="calc-saved-section">
+                        <h3 style="margin-bottom: 15px; font-size: 1.1rem;"><i class="fas fa-star" style="color: var(--accent);"></i> 我的常用计价方案</h3>
+                        <div class="calc-saved-list" id="calc-saved-list">
+                            <div style="text-align: center; color: #94a3b8; padding: 30px; font-size: 0.9rem;">
+                                暂无保存的方案
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Post Task -->
             <section class="view-section hidden" id="post-task-tab">
                 <div class="form-container">
@@ -152,8 +275,24 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label>送达宿舍 <span style="color: #94a3b8; font-size: 0.85rem;">(最多20字)</span></label>
-                                <input type="text" id="pkg-delivery" placeholder="如：13号楼402" maxlength="20" required>
+                                <label>送达宿舍</label>
+                                <select id="pkg-delivery">
+                                    <option value="1号楼">1号楼</option>
+                                    <option value="2号楼">2号楼</option>
+                                    <option value="3号楼">3号楼</option>
+                                    <option value="4号楼">4号楼</option>
+                                    <option value="5号楼">5号楼</option>
+                                    <option value="6号楼">6号楼</option>
+                                    <option value="7号楼">7号楼</option>
+                                    <option value="8号楼">8号楼</option>
+                                    <option value="9号楼">9号楼</option>
+                                    <option value="10号楼">10号楼</option>
+                                    <option value="11号楼">11号楼</option>
+                                    <option value="12号楼">12号楼</option>
+                                    <option value="13号楼">13号楼</option>
+                                    <option value="14号楼">14号楼</option>
+                                    <option value="15号楼">15号楼</option>
+                                </select>
                             </div>
                         </div>
                         <div class="form-grid">
