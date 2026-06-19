@@ -10,6 +10,11 @@ void get_cert_apps_json(char *buf, const char *username_filter, const char *stat
 void get_user_json(char *buf, const char *username);
 void get_users_json(char *buf);
 void get_blacklist_json(char *buf, const char *blocker_filter);
+void get_events_json(char *buf, const char *date_filter, const char *type_filter);
+void get_event_json(char *buf, int event_id);
+void get_subscriptions_json(char *buf, const char *username_filter);
+void get_notifications_json(char *buf, const char *username_filter);
+int is_user_subscribed(const char *username, const char *event_type);
 int is_user_blocked(const char *blocker, const char *blocked);
 
 #endif

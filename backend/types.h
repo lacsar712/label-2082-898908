@@ -5,7 +5,38 @@
 #define MAX_USERS 100
 #define MAX_CERT_APPS 200
 #define MAX_BLACKLIST 500
+#define MAX_EVENTS 500
+#define MAX_SUBSCRIPTIONS 1000
+#define MAX_NOTIFICATIONS 2000
 #define BUFFER_SIZE 20480
+
+typedef struct {
+  int id;
+  char title[100];
+  char date[20];
+  char type[30];
+  char description[1000];
+  char created_by[50];
+  char create_time[30];
+} Event;
+
+typedef struct {
+  int id;
+  char username[50];
+  char event_type[30];
+  char create_time[30];
+} EventSubscription;
+
+typedef struct {
+  int id;
+  char username[50];
+  char event_title[100];
+  char event_date[20];
+  char event_type[30];
+  char content[500];
+  char create_time[30];
+  char read_flag[10];
+} EventNotification;
 
 typedef struct {
   char username[50];

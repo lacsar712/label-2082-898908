@@ -14,6 +14,15 @@ extern int next_cert_id;
 extern BlacklistEntry blacklist[MAX_BLACKLIST];
 extern int blacklist_count;
 extern int next_blacklist_id;
+extern Event events[MAX_EVENTS];
+extern int event_count;
+extern int next_event_id;
+extern EventSubscription subscriptions[MAX_SUBSCRIPTIONS];
+extern int subscription_count;
+extern int next_subscription_id;
+extern EventNotification notifications[MAX_NOTIFICATIONS];
+extern int notification_count;
+extern int next_notification_id;
 
 void save_data();
 void load_data();
@@ -21,5 +30,11 @@ void save_cert_data();
 void load_cert_data();
 void save_blacklist_data();
 void load_blacklist_data();
+void save_event_data();
+void load_event_data();
+void save_subscription_data();
+void load_subscription_data();
+void save_notification_data();
+void load_notification_data();
 
 #endif

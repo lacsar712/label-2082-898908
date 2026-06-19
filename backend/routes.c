@@ -663,6 +663,373 @@ static void handle_get_user(int client_socket, char *query_string) {
   send(client_socket, json, strlen(json), 0);
 }
 
+static void handle_get_events(int client_socket, char *query_string) {
+  char date_filter[50] = "", type_filter[50] = "";
+
+  if (query_string) {
+    char *d_ptr = strstr(query_string, "date=");
+    if (d_ptr)
+      sscanf(d_ptr + 5, "%[^& ]", date_filter);
+    char *t_ptr = strstr(query_string, "type=");
+    if (t_ptr)
+      sscanf(t_ptr + 5, "%[^& ]", type_filter);
+  }
+
+  char response_header[] = "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+                           "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(MAX_EVENTS * 1500);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for events JSON");
+    return;
+  }
+  memset(json, 0, MAX_EVENTS * 1500);
+  get_events_json(json, date_filter, type_filter);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Events fetched - date:%s type:%s",
+              date_filter[0] ? date_filter : "all",
+              type_filter[0] ? type_filter : "all");
+}
+
+static void handle_create_event(int client_socket, char *body) {
+  char title[100] = "", date[20] = "", type[30] = "", description[1000] = "", created_by[50] = "";
+
+  parse_json_string(body, "title", title, sizeof(title));
+  parse_json_string(body, "date", date, sizeof(date));
+  parse_json_string(body, "type", type, sizeof(type));
+  parse_json_string(body, "description", description, sizeof(description));
+  parse_json_string(body, "createdBy", created_by, sizeof(created_by));
+
+  if (strlen(title) == 0 || strlen(date) == 0 || strlen(type) == 0) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"请填写完整信息\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  if (strcmp(created_by, "admin") != 0) {
+    char resp[] = "HTTP/1.1 403 Forbidden\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"无权限创建活动\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  if (event_count >= MAX_EVENTS) {
+    char resp[] = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"活动数量已达上限\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  Event new_event;
+  memset(&new_event, 0, sizeof(Event));
+  new_event.id = next_event_id++;
+  strcpy(new_event.title, title);
+  strcpy(new_event.date, date);
+  strcpy(new_event.type, type);
+  strcpy(new_event.description, description);
+  strcpy(new_event.created_by, created_by);
+  get_current_time_str(new_event.create_time, sizeof(new_event.create_time));
+
+  events[event_count++] = new_event;
+
+  {
+    const char *type_labels[] = {"peak", "快递高峰期", "promotion", "驿站促销日", "holiday", "寒暑假寄件提醒", "other", "校园活动", NULL};
+    char type_label[50] = "校园活动";
+    for (int i = 0; type_labels[i] != NULL; i += 2) {
+      if (strcmp(type, type_labels[i]) == 0) {
+        strncpy(type_label, type_labels[i + 1], sizeof(type_label) - 1);
+        break;
+      }
+    }
+
+    for (int i = 0; i < subscription_count; i++) {
+      if (strcmp(subscriptions[i].event_type, type) == 0) {
+        if (notification_count >= MAX_NOTIFICATIONS) break;
+
+        EventNotification notif;
+        memset(&notif, 0, sizeof(EventNotification));
+        notif.id = next_notification_id++;
+        strncpy(notif.username, subscriptions[i].username, sizeof(notif.username) - 1);
+        strncpy(notif.event_title, title, sizeof(notif.event_title) - 1);
+        strncpy(notif.event_date, date, sizeof(notif.event_date) - 1);
+        strncpy(notif.event_type, type, sizeof(notif.event_type) - 1);
+
+        char content[500];
+        snprintf(content, sizeof(content),
+                 "【%s】活动将于%s举行，详情：%.100s",
+                 type_label, date, description);
+        strncpy(notif.content, content, sizeof(notif.content) - 1);
+
+        get_current_time_str(notif.create_time, sizeof(notif.create_time));
+        strcpy(notif.read_flag, "no");
+
+        notifications[notification_count++] = notif;
+        log_message(LOG_INFO, "Notification created for user %s: event %d",
+                    subscriptions[i].username, new_event.id);
+      }
+    }
+  }
+
+  save_data();
+  log_message(LOG_INFO, "Event created: ID=%d title=%s by %s", new_event.id, new_event.title, new_event.created_by);
+
+  char resp[256];
+  snprintf(resp, sizeof(resp),
+           "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+           "{\"status\":\"success\",\"id\":%d}",
+           new_event.id);
+  send(client_socket, resp, strlen(resp), 0);
+}
+
+static void handle_update_event(int client_socket, char *body) {
+  int id = -1;
+  char title[100] = "", date[20] = "", type[30] = "", description[1000] = "";
+
+  char *id_ptr = strstr(body, "\"id\":");
+  if (id_ptr)
+    sscanf(id_ptr + 5, "%d", &id);
+
+  parse_json_string(body, "title", title, sizeof(title));
+  parse_json_string(body, "date", date, sizeof(date));
+  parse_json_string(body, "type", type, sizeof(type));
+  parse_json_string(body, "description", description, sizeof(description));
+
+  if (id <= 0) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"活动ID无效\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  int found = -1;
+  for (int i = 0; i < event_count; i++) {
+    if (events[i].id == id) {
+      found = i;
+      break;
+    }
+  }
+
+  if (found == -1) {
+    char resp[] = "HTTP/1.1 404 Not Found\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"活动不存在\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  if (strlen(title) > 0) strcpy(events[found].title, title);
+  if (strlen(date) > 0) strcpy(events[found].date, date);
+  if (strlen(type) > 0) strcpy(events[found].type, type);
+  if (strlen(description) > 0) strcpy(events[found].description, description);
+
+  save_data();
+  log_message(LOG_INFO, "Event updated: ID=%d", id);
+
+  char response[] = "HTTP/1.1 200 OK\r\nContent-Type: "
+                    "application/json\r\n\r\n{\"status\":\"success\"}";
+  send(client_socket, response, strlen(response), 0);
+}
+
+static void handle_delete_event(int client_socket, char *body) {
+  int id = -1;
+
+  char *id_ptr = strstr(body, "\"id\":");
+  if (id_ptr)
+    sscanf(id_ptr + 5, "%d", &id);
+
+  if (id <= 0) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"活动ID无效\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  int found = -1;
+  for (int i = 0; i < event_count; i++) {
+    if (events[i].id == id) {
+      found = i;
+      break;
+    }
+  }
+
+  if (found == -1) {
+    char resp[] = "HTTP/1.1 404 Not Found\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"活动不存在\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  for (int i = found; i < event_count - 1; i++) {
+    events[i] = events[i + 1];
+  }
+  event_count--;
+  save_data();
+  log_message(LOG_INFO, "Event deleted: ID=%d", id);
+
+  char response[] = "HTTP/1.1 200 OK\r\nContent-Type: "
+                    "application/json\r\n\r\n{\"status\":\"success\"}";
+  send(client_socket, response, strlen(response), 0);
+}
+
+static void handle_get_subscriptions(int client_socket, char *query_string) {
+  char username[50] = "";
+
+  if (query_string) {
+    char *u_ptr = strstr(query_string, "username=");
+    if (u_ptr)
+      sscanf(u_ptr + 9, "%[^& ]", username);
+  }
+
+  char response_header[] = "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+                           "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(MAX_SUBSCRIPTIONS * 512);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for subscriptions JSON");
+    return;
+  }
+  memset(json, 0, MAX_SUBSCRIPTIONS * 512);
+  get_subscriptions_json(json, username);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Subscriptions fetched - username:%s",
+              username[0] ? username : "all");
+}
+
+static void handle_subscribe(int client_socket, char *body) {
+  char username[50] = "", event_type[30] = "";
+
+  parse_json_string(body, "username", username, sizeof(username));
+  parse_json_string(body, "eventType", event_type, sizeof(event_type));
+
+  if (strlen(username) == 0 || strlen(event_type) == 0) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"参数不完整\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  if (is_user_subscribed(username, event_type)) {
+    char resp[] = "HTTP/1.1 409 Conflict\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"已订阅该类型\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  if (subscription_count >= MAX_SUBSCRIPTIONS) {
+    char resp[] = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"订阅数量已达上限\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  EventSubscription sub;
+  memset(&sub, 0, sizeof(EventSubscription));
+  sub.id = next_subscription_id++;
+  strcpy(sub.username, username);
+  strcpy(sub.event_type, event_type);
+  get_current_time_str(sub.create_time, sizeof(sub.create_time));
+
+  subscriptions[subscription_count++] = sub;
+  save_data();
+  log_message(LOG_INFO, "User %s subscribed to %s", username, event_type);
+
+  char resp[256];
+  snprintf(resp, sizeof(resp),
+           "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+           "{\"status\":\"success\",\"id\":%d}",
+           sub.id);
+  send(client_socket, resp, strlen(resp), 0);
+}
+
+static void handle_unsubscribe(int client_socket, char *body) {
+  char username[50] = "", event_type[30] = "";
+
+  parse_json_string(body, "username", username, sizeof(username));
+  parse_json_string(body, "eventType", event_type, sizeof(event_type));
+
+  int found = -1;
+  for (int i = 0; i < subscription_count; i++) {
+    if (strcmp(subscriptions[i].username, username) == 0 &&
+        strcmp(subscriptions[i].event_type, event_type) == 0) {
+      found = i;
+      break;
+    }
+  }
+
+  if (found == -1) {
+    char resp[] = "HTTP/1.1 404 Not Found\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"订阅不存在\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  for (int i = found; i < subscription_count - 1; i++) {
+    subscriptions[i] = subscriptions[i + 1];
+  }
+  subscription_count--;
+  save_data();
+  log_message(LOG_INFO, "User %s unsubscribed from %s", username, event_type);
+
+  char response[] = "HTTP/1.1 200 OK\r\nContent-Type: "
+                    "application/json\r\n\r\n{\"status\":\"success\"}";
+  send(client_socket, response, strlen(response), 0);
+}
+
+static void handle_get_notifications(int client_socket, char *query_string) {
+  char username[50] = "";
+
+  if (query_string) {
+    char *u_ptr = strstr(query_string, "username=");
+    if (u_ptr)
+      sscanf(u_ptr + 9, "%[^& ]", username);
+  }
+
+  char response_header[] = "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+                           "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(MAX_NOTIFICATIONS * 1024);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for notifications JSON");
+    return;
+  }
+  memset(json, 0, MAX_NOTIFICATIONS * 1024);
+  get_notifications_json(json, username);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Notifications fetched - username:%s",
+              username[0] ? username : "all");
+}
+
+static void handle_mark_notification_read(int client_socket, char *body) {
+  int id = -1;
+  char username[50] = "";
+
+  char *id_ptr = strstr(body, "\"id\":");
+  if (id_ptr)
+    sscanf(id_ptr + 5, "%d", &id);
+  parse_json_string(body, "username", username, sizeof(username));
+
+  for (int i = 0; i < notification_count; i++) {
+    if ((id > 0 && notifications[i].id == id) ||
+        (strlen(username) > 0 && strcmp(notifications[i].username, username) == 0)) {
+      strcpy(notifications[i].read_flag, "yes");
+    }
+  }
+  save_data();
+
+  char response[] = "HTTP/1.1 200 OK\r\nContent-Type: "
+                    "application/json\r\n\r\n{\"status\":\"success\"}";
+  send(client_socket, response, strlen(response), 0);
+}
+
 static void handle_get_nearby_orders(int client_socket, char *query_string) {
   char building_raw[50] = "";
   char building[50] = "";
@@ -867,6 +1234,54 @@ void handle_request(int client_socket) {
     if (body) {
       body += 4;
       handle_remove_blacklist(client_socket, body);
+    }
+  } else if (strstr(buffer, "GET /api/events")) {
+    char *path_start = strstr(buffer, "GET /api/events");
+    char *q = strstr(path_start, "?");
+    handle_get_events(client_socket, q);
+  } else if (strstr(buffer, "POST /api/events/create")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_create_event(client_socket, body);
+    }
+  } else if (strstr(buffer, "POST /api/events/update")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_update_event(client_socket, body);
+    }
+  } else if (strstr(buffer, "POST /api/events/delete")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_delete_event(client_socket, body);
+    }
+  } else if (strstr(buffer, "GET /api/subscriptions")) {
+    char *path_start = strstr(buffer, "GET /api/subscriptions");
+    char *q = strstr(path_start, "?");
+    handle_get_subscriptions(client_socket, q);
+  } else if (strstr(buffer, "POST /api/subscribe")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_subscribe(client_socket, body);
+    }
+  } else if (strstr(buffer, "POST /api/unsubscribe")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_unsubscribe(client_socket, body);
+    }
+  } else if (strstr(buffer, "GET /api/notifications")) {
+    char *path_start = strstr(buffer, "GET /api/notifications");
+    char *q = strstr(path_start, "?");
+    handle_get_notifications(client_socket, q);
+  } else if (strstr(buffer, "POST /api/notifications/read")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_mark_notification_read(client_socket, body);
     }
   } else {
     log_message(LOG_WARN, "404 Not Found: %.50s", buffer);

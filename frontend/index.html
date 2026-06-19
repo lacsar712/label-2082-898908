@@ -77,6 +77,9 @@
                 <a href="#" class="nav-item" data-tab="cert-record" id="nav-cert-record"><i class="fas fa-history"></i> 认证记录</a>
                 <a href="#" class="nav-item" data-tab="leaderboard"><i class="fas fa-trophy"></i> 跑腿排行</a>
                 <a href="#" class="nav-item" data-tab="cert-audit" id="nav-cert-audit" style="display:none;"><i class="fas fa-user-check"></i> 认证审核</a>
+                <a href="#" class="nav-item" data-tab="event-calendar"><i class="fas fa-calendar-alt"></i> 活动日历</a>
+                <a href="#" class="nav-item" data-tab="event-manage" id="nav-event-manage" style="display:none;"><i class="fas fa-edit"></i> 活动管理</a>
+                <a href="#" class="nav-item" data-tab="notifications" id="nav-notifications"><i class="fas fa-bell"></i> 通知中心 <span class="cert-badge" id="notification-unread-count" style="display:none; background: #ef4444; margin-left: 6px;">0</span></a>
                 <a href="#" class="nav-item" data-tab="blacklist"><i class="fas fa-ban"></i> 黑名单管理</a>
                 <a href="#" class="nav-item" data-tab="profile"><i class="fas fa-user-circle"></i> 个人中心</a>
             </nav>
@@ -109,6 +112,7 @@
 
             <!-- Dashboard -->
             <section class="view-section" id="dashboard-tab">
+                <div id="event-banner-container"></div>
                 <div class="welcome-section">
                     <h1>早安, <span id="welcome-name">同学</span> ! 👋</h1>
                     <p>今天校园里有新的快递任务等待认领。</p>
@@ -582,6 +586,62 @@
                     <div style="text-align: center; color: #64748b; padding: 40px;">加载中...</div>
                 </div>
             </section>
+
+            <!-- Event Calendar -->
+            <section class="view-section hidden" id="event-calendar-tab">
+                <div class="section-header">
+                    <h2><i class="fas fa-calendar-alt"></i> 校园活动日历</h2>
+                    <button class="btn-primary" id="subscribe-types-btn" style="font-size: 0.85rem;">
+                        <i class="fas fa-bell"></i> 订阅类型
+                    </button>
+                </div>
+                <div class="calendar-container">
+                    <div class="calendar-legend">
+                        <span class="legend-item"><span class="legend-dot peak"></span> 快递高峰</span>
+                        <span class="legend-item"><span class="legend-dot promotion"></span> 驿站促销</span>
+                        <span class="legend-item"><span class="legend-dot holiday"></span> 寒暑假提醒</span>
+                        <span class="legend-item"><span class="legend-dot other"></span> 其他活动</span>
+                    </div>
+                    <div class="calendar-card">
+                        <div class="calendar-header">
+                            <button class="calendar-nav-btn" id="prev-month-btn"><i class="fas fa-chevron-left"></i></button>
+                            <h3 id="calendar-title">2026年6月</h3>
+                            <button class="calendar-nav-btn" id="next-month-btn"><i class="fas fa-chevron-right"></i></button>
+                            <button class="calendar-today-btn" id="today-btn">今天</button>
+                        </div>
+                        <div class="calendar-weekdays">
+                            <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+                        </div>
+                        <div class="calendar-grid" id="calendar-grid"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Event Management (Admin) -->
+            <section class="view-section hidden" id="event-manage-tab">
+                <div class="section-header">
+                    <h2><i class="fas fa-edit"></i> 活动管理</h2>
+                    <button class="btn-primary" id="add-event-btn">
+                        <i class="fas fa-plus"></i> 新增活动
+                    </button>
+                </div>
+                <div class="event-manage-list" id="event-manage-list">
+                    <div style="text-align: center; color: #64748b; padding: 40px;">加载中...</div>
+                </div>
+            </section>
+
+            <!-- Notifications Center -->
+            <section class="view-section hidden" id="notifications-tab">
+                <div class="section-header">
+                    <h2><i class="fas fa-bell"></i> 通知中心</h2>
+                    <button class="btn-outline" id="mark-all-read-btn" style="font-size: 0.85rem;">
+                        <i class="fas fa-check-double"></i> 全部已读
+                    </button>
+                </div>
+                <div class="notification-list" id="notification-list">
+                    <div style="text-align: center; color: #64748b; padding: 40px;">加载中...</div>
+                </div>
+            </section>
         </main>
     </div>
 
@@ -696,6 +756,71 @@
                 </div>
                 <button type="submit" class="submit-btn">确认选择</button>
             </form>
+        </div>
+    </div>
+
+    <!-- Event Detail Modal -->
+    <div id="event-detail-modal" class="overlay hidden">
+        <div class="auth-card" style="width: 500px;">
+            <h2><i class="fas fa-calendar-day"></i> <span id="event-detail-date">日期</span></h2>
+            <div id="event-detail-list" style="margin-top: 20px; max-height: 400px; overflow-y: auto;"></div>
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button type="button" class="btn-outline" style="flex:1;"
+                    onclick="document.getElementById('event-detail-modal').classList.add('hidden')">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Event Edit Modal (Admin) -->
+    <div id="event-edit-modal" class="overlay hidden">
+        <div class="auth-card" style="width: 500px;">
+            <h2 id="event-edit-title"><i class="fas fa-edit"></i> 新增活动</h2>
+            <form id="event-edit-form" class="auth-form" style="margin-top:20px;">
+                <input type="hidden" id="event-edit-id" value="">
+                <div class="form-group">
+                    <label>活动标题 <span style="color: #94a3b8; font-size: 0.85rem;">(最多50字)</span></label>
+                    <input type="text" id="event-edit-title-input" maxlength="50" required placeholder="如：618快递高峰期">
+                </div>
+                <div class="form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div class="form-group">
+                        <label>活动日期</label>
+                        <input type="date" id="event-edit-date" required>
+                    </div>
+                    <div class="form-group">
+                        <label>活动类型</label>
+                        <select id="event-edit-type" required>
+                            <option value="peak">快递高峰</option>
+                            <option value="promotion">驿站促销</option>
+                            <option value="holiday">寒暑假提醒</option>
+                            <option value="other">其他活动</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>详情描述 <span style="color: #94a3b8; font-size: 0.85rem;">(最多500字)</span></label>
+                    <textarea id="event-edit-desc" rows="4" maxlength="500" placeholder="请填写活动详细描述..." style="width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #e2e8f0; outline: none; resize: vertical; font-family: inherit;"></textarea>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:20px;">
+                    <button type="button" class="btn-outline" style="flex:1;"
+                        onclick="document.getElementById('event-edit-modal').classList.add('hidden')">取消</button>
+                    <button type="submit" class="btn-primary" style="flex:1;" id="event-edit-submit">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Subscribe Types Modal -->
+    <div id="subscribe-modal" class="overlay hidden">
+        <div class="auth-card" style="width: 420px;">
+            <h2><i class="fas fa-bell"></i> 活动订阅设置</h2>
+            <p style="color: #64748b; margin: 15px 0; font-size: 0.9rem;">选择你感兴趣的活动类型，临近活动日将收到通知提醒。</p>
+            <div id="subscribe-types-list" style="margin-top: 20px;">
+            </div>
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button type="button" class="btn-outline" style="flex:1;"
+                    onclick="document.getElementById('subscribe-modal').classList.add('hidden')">取消</button>
+                <button type="button" class="btn-primary" style="flex:1;" id="save-subscribe-btn">保存订阅</button>
+            </div>
         </div>
     </div>
 

@@ -89,11 +89,62 @@ document.addEventListener('DOMContentLoaded', () => {
         mutualAidCurrentBuilding: document.getElementById('mutual-aid-current-building'),
         buildingSelectModal: document.getElementById('building-select-modal'),
         buildingSelectForm: document.getElementById('building-select-form'),
-        buildingSelectDorm: document.getElementById('building-select-dorm')
+        buildingSelectDorm: document.getElementById('building-select-dorm'),
+
+        eventBannerContainer: document.getElementById('event-banner-container'),
+        navEventCalendar: document.getElementById('nav-event-calendar'),
+        navEventManage: document.getElementById('nav-event-manage'),
+        navNotifications: document.getElementById('nav-notifications'),
+
+        calendarMonthLabel: document.getElementById('calendar-month-label'),
+        calendarPrevMonth: document.getElementById('calendar-prev-month'),
+        calendarNextMonth: document.getElementById('calendar-next-month'),
+        calendarGrid: document.getElementById('calendar-grid'),
+        calendarSubscribeBtn: document.getElementById('calendar-subscribe-btn'),
+
+        eventDetailModal: document.getElementById('event-detail-modal'),
+        eventDetailDate: document.getElementById('event-detail-date'),
+        eventDetailList: document.getElementById('event-detail-list'),
+        eventDetailClose: document.getElementById('event-detail-close'),
+
+        eventManageList: document.getElementById('event-manage-list'),
+        eventAddBtn: document.getElementById('event-add-btn'),
+        eventEditModal: document.getElementById('event-edit-modal'),
+        eventEditForm: document.getElementById('event-edit-form'),
+        eventEditId: document.getElementById('event-edit-id'),
+        eventEditTitle: document.getElementById('event-edit-title'),
+        eventEditDate: document.getElementById('event-edit-date'),
+        eventEditType: document.getElementById('event-edit-type'),
+        eventEditDesc: document.getElementById('event-edit-desc'),
+        eventEditClose: document.getElementById('event-edit-close'),
+        eventEditCancel: document.getElementById('event-edit-cancel'),
+
+        subscribeModal: document.getElementById('subscribe-modal'),
+        subscribeForm: document.getElementById('subscribe-form'),
+        subscribeClose: document.getElementById('subscribe-close'),
+        subscribeCancel: document.getElementById('subscribe-cancel'),
+        subscribeTypePeak: document.getElementById('subscribe-type-peak'),
+        subscribeTypePromotion: document.getElementById('subscribe-type-promotion'),
+        subscribeTypeHoliday: document.getElementById('subscribe-type-holiday'),
+        subscribeTypeOther: document.getElementById('subscribe-type-other'),
+
+        notificationList: document.getElementById('notification-list'),
+        notificationMarkAllBtn: document.getElementById('notification-mark-all-btn'),
+        notificationUnreadCount: document.getElementById('notification-unread-count')
     };
 
     let auditFilter = 'pending';
     const userBlacklistCache = {};
+
+    let currentCalendarDate = new Date();
+    let allEvents = [];
+    let userSubscriptions = [];
+    const EVENT_TYPE_INFO = {
+        peak: { label: '快递高峰', icon: 'fa-boxes', color: '#ef4444', gradient: 'linear-gradient(135deg, #ef4444, #f97316)' },
+        promotion: { label: '驿站促销', icon: 'fa-tags', color: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #fbbf24)' },
+        holiday: { label: '寒暑假提醒', icon: 'fa-plane-departure', color: '#06b6d4', gradient: 'linear-gradient(135deg, #06b6d4, #3b82f6)' },
+        other: { label: '其他活动', icon: 'fa-calendar-star', color: '#8b5cf6', gradient: 'linear-gradient(135deg, #8b5cf6, #a78bfa)' }
+    };
 
     // --- Authentication ---
     async function refreshUserInfo() {
@@ -127,6 +178,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const isAdmin = currentUser && currentUser.username === 'admin';
             elements.navCertAudit.style.display = isAdmin ? 'flex' : 'none';
         }
+        if (elements.navEventManage) {
+            const isAdmin = currentUser && currentUser.username === 'admin';
+            elements.navEventManage.style.display = isAdmin ? 'flex' : 'none';
+        }
     }
 
     function updateUIForLogin() {
@@ -143,6 +198,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateAdminNav();
             refreshUserInfo();
             loadBlacklistCache();
+            loadEventBanners();
 
             // Go to dashboard by default to clear any previous account's tab state
             document.querySelector('[data-tab="dashboard"]').click();
@@ -246,7 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.viewSections.forEach(v => v.classList.add('hidden'));
             document.getElementById(`${tab}-tab`).classList.remove('hidden');
 
-            if (tab === 'dashboard') fetchOrders();
+            if (tab === 'dashboard') { fetchOrders(); loadEventBanners(); }
             if (tab === 'my-orders') fetchMyOrders();
             if (tab === 'profile') loadProfile();
             if (tab === 'cert-apply') loadCertApplyForm();
@@ -257,6 +313,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tab === 'price-calc') loadPriceCalculator();
             if (tab === 'route-plan') loadRoutePlan();
             if (tab === 'mutual-aid') loadMutualAid();
+            if (tab === 'event-calendar') loadEventCalendar();
+            if (tab === 'event-manage') loadEventManage();
+            if (tab === 'notifications') loadNotifications();
         };
     });
 
@@ -1996,6 +2055,553 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.mutualBuildingSelect.onchange = () => {
             elements.mutualOnlyMine.checked = false;
             loadMutualAid();
+        };
+    }
+
+    // --- Event Calendar Functions ---
+    async function fetchAllEvents() {
+        try {
+            const resp = await fetch('/api/events');
+            allEvents = await resp.json();
+            return allEvents;
+        } catch (err) {
+            console.error('Failed to fetch events:', err);
+            allEvents = [];
+            return [];
+        }
+    }
+
+    async function fetchUserSubscriptions() {
+        if (!currentUser) return [];
+        try {
+            const resp = await fetch(`/api/subscriptions?username=${encodeURIComponent(currentUser.username)}`);
+            userSubscriptions = await resp.json();
+            return userSubscriptions;
+        } catch (err) {
+            console.error('Failed to fetch subscriptions:', err);
+            userSubscriptions = [];
+            return [];
+        }
+    }
+
+    function isUserSubscribedToType(eventType) {
+        return userSubscriptions.some(s => s.eventType === eventType);
+    }
+
+    function getEventsByDate(dateStr) {
+        return allEvents.filter(e => e.date === dateStr);
+    }
+
+    function formatDate(date) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+
+    function parseDate(dateStr) {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        return new Date(y, m - 1, d);
+    }
+
+    function isSameDay(d1, d2) {
+        return d1.getFullYear() === d2.getFullYear() &&
+               d1.getMonth() === d2.getMonth() &&
+               d1.getDate() === d2.getDate();
+    }
+
+    function getDaysDiff(date1, date2) {
+        const oneDay = 24 * 60 * 60 * 1000;
+        const d1 = new Date(date1.getFullYear(), date1.getMonth(), date1.getDate());
+        const d2 = new Date(date2.getFullYear(), date2.getMonth(), date2.getDate());
+        return Math.round((d2 - d1) / oneDay);
+    }
+
+    // --- Event Banners (Dashboard) ---
+    async function loadEventBanners() {
+        if (!elements.eventBannerContainer) return;
+
+        await Promise.all([fetchAllEvents(), fetchUserSubscriptions()]);
+
+        const today = new Date();
+        const upcomingEvents = allEvents
+            .filter(e => {
+                const eventDate = parseDate(e.date);
+                const diff = getDaysDiff(today, eventDate);
+                return diff >= 0 && diff <= 3 && isUserSubscribedToType(e.type);
+            })
+            .sort((a, b) => {
+                const da = parseDate(a.date);
+                const db = parseDate(b.date);
+                return da - db;
+            })
+            .slice(0, 3);
+
+        if (upcomingEvents.length === 0) {
+            elements.eventBannerContainer.innerHTML = '';
+            elements.eventBannerContainer.style.display = 'none';
+            return;
+        }
+
+        elements.eventBannerContainer.style.display = 'block';
+        let html = '';
+
+        upcomingEvents.forEach(event => {
+            const typeInfo = EVENT_TYPE_INFO[event.type] || EVENT_TYPE_INFO.other;
+            const eventDate = parseDate(event.date);
+            const diff = getDaysDiff(today, eventDate);
+            let timeLabel = '';
+            if (diff === 0) timeLabel = '今天';
+            else if (diff === 1) timeLabel = '明天';
+            else timeLabel = `${diff}天后`;
+
+            html += `
+                <div class="event-banner event-banner-${event.type}">
+                    <div class="event-banner-icon">
+                        <i class="fas ${typeInfo.icon}"></i>
+                    </div>
+                    <div class="event-banner-content">
+                        <div class="event-banner-title">
+                            <span class="event-banner-tag">${typeInfo.label}</span>
+                            ${event.title}
+                        </div>
+                        <div class="event-banner-desc">
+                            <i class="fas fa-calendar-day"></i> ${event.date}（${timeLabel}）
+                            <span style="margin-left: 12px;">${event.description.substring(0, 40)}${event.description.length > 40 ? '...' : ''}</span>
+                        </div>
+                    </div>
+                    <button class="event-banner-close" onclick="this.parentElement.style.display='none'">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `;
+        });
+
+        elements.eventBannerContainer.innerHTML = html;
+    }
+
+    // --- Calendar Rendering ---
+    async function loadEventCalendar() {
+        await Promise.all([fetchAllEvents(), fetchUserSubscriptions()]);
+        renderCalendar();
+    }
+
+    function renderCalendar() {
+        const year = currentCalendarDate.getFullYear();
+        const month = currentCalendarDate.getMonth();
+        elements.calendarMonthLabel.textContent = `${year}年${month + 1}月`;
+
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        const startWeekday = firstDay.getDay();
+        const daysInMonth = lastDay.getDate();
+
+        const today = new Date();
+        let html = `
+            <div class="calendar-weekday">日</div>
+            <div class="calendar-weekday">一</div>
+            <div class="calendar-weekday">二</div>
+            <div class="calendar-weekday">三</div>
+            <div class="calendar-weekday">四</div>
+            <div class="calendar-weekday">五</div>
+            <div class="calendar-weekday">六</div>
+        `;
+
+        for (let i = 0; i < startWeekday; i++) {
+            html += `<div class="calendar-day empty"></div>`;
+        }
+
+        for (let day = 1; day <= daysInMonth; day++) {
+            const date = new Date(year, month, day);
+            const dateStr = formatDate(date);
+            const dayEvents = getEventsByDate(dateStr);
+            const isToday = isSameDay(date, today);
+            const hasEvents = dayEvents.length > 0;
+
+            let dotsHtml = '';
+            if (hasEvents) {
+                const displayedTypes = [...new Set(dayEvents.slice(0, 4).map(e => e.type))];
+                dotsHtml = '<div class="calendar-event-dots">';
+                displayedTypes.forEach(type => {
+                    const color = (EVENT_TYPE_INFO[type] || EVENT_TYPE_INFO.other).color;
+                    dotsHtml += `<span class="calendar-event-dot dot-${type}" style="background:${color};"></span>`;
+                });
+                dotsHtml += '</div>';
+            }
+
+            html += `
+                <div class="calendar-day ${isToday ? 'today' : ''} ${hasEvents ? 'has-event' : ''}" 
+                     data-date="${dateStr}" 
+                     onclick="${hasEvents ? `showEventDetail('${dateStr}')` : ''}">
+                    <span class="calendar-day-number">${day}</span>
+                    ${dotsHtml}
+                </div>
+            `;
+        }
+
+        elements.calendarGrid.innerHTML = html;
+    }
+
+    if (elements.calendarPrevMonth) {
+        elements.calendarPrevMonth.onclick = () => {
+            currentCalendarDate.setMonth(currentCalendarDate.getMonth() - 1);
+            renderCalendar();
+        };
+    }
+
+    if (elements.calendarNextMonth) {
+        elements.calendarNextMonth.onclick = () => {
+            currentCalendarDate.setMonth(currentCalendarDate.getMonth() + 1);
+            renderCalendar();
+        };
+    }
+
+    // --- Event Detail Modal ---
+    window.showEventDetail = (dateStr) => {
+        const dayEvents = getEventsByDate(dateStr);
+        elements.eventDetailDate.textContent = dateStr;
+
+        if (dayEvents.length === 0) {
+            elements.eventDetailList.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">当日暂无活动</div>';
+        } else {
+            let html = '';
+            dayEvents.forEach(event => {
+                const typeInfo = EVENT_TYPE_INFO[event.type] || EVENT_TYPE_INFO.other;
+                html += `
+                    <div class="event-detail-item event-detail-${event.type}">
+                        <div class="event-detail-header">
+                            <span class="event-detail-type" style="background:${typeInfo.gradient};">
+                                <i class="fas ${typeInfo.icon}"></i> ${typeInfo.label}
+                            </span>
+                            ${currentUser && currentUser.username === 'admin' ? `
+                                <div class="event-detail-actions">
+                                    <button class="event-detail-edit-btn" onclick="event.stopPropagation(); openEventEditModal(${event.id})">
+                                        <i class="fas fa-edit"></i> 编辑
+                                    </button>
+                                    <button class="event-detail-delete-btn" onclick="event.stopPropagation(); deleteEvent(${event.id})">
+                                        <i class="fas fa-trash"></i> 删除
+                                    </button>
+                                </div>
+                            ` : ''}
+                        </div>
+                        <h3 class="event-detail-title">${event.title}</h3>
+                        <p class="event-detail-description">${event.description}</p>
+                        <div class="event-detail-meta">
+                            <span><i class="fas fa-user"></i> 发布人：${event.createdBy || 'admin'}</span>
+                            <span><i class="fas fa-clock"></i> ${event.createTime || '-'}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            elements.eventDetailList.innerHTML = html;
+        }
+
+        elements.eventDetailModal.classList.remove('hidden');
+    };
+
+    if (elements.eventDetailClose) {
+        elements.eventDetailClose.onclick = () => {
+            elements.eventDetailModal.classList.add('hidden');
+        };
+    }
+
+    // --- Event Manage (Admin) ---
+    async function loadEventManage() {
+        if (!elements.eventManageList) return;
+        await fetchAllEvents();
+
+        if (allEvents.length === 0) {
+            elements.eventManageList.innerHTML = '<div style="text-align:center;color:#64748b;padding:40px;">暂无活动数据</div>';
+            return;
+        }
+
+        const sortedEvents = [...allEvents].sort((a, b) => {
+            const da = parseDate(a.date);
+            const db = parseDate(b.date);
+            return db - da;
+        });
+
+        let html = '';
+        sortedEvents.forEach(event => {
+            const typeInfo = EVENT_TYPE_INFO[event.type] || EVENT_TYPE_INFO.other;
+            html += `
+                <div class="event-manage-card">
+                    <div class="event-manage-header">
+                        <span class="event-type-badge event-type-${event.type}" style="background:${typeInfo.gradient};">
+                            <i class="fas ${typeInfo.icon}"></i> ${typeInfo.label}
+                        </span>
+                        <span class="event-manage-date"><i class="fas fa-calendar-day"></i> ${event.date}</span>
+                    </div>
+                    <h3 class="event-manage-title">${event.title}</h3>
+                    <p class="event-manage-desc">${event.description}</p>
+                    <div class="event-manage-actions">
+                        <button class="btn-outline" onclick="openEventEditModal(${event.id})">
+                            <i class="fas fa-edit"></i> 编辑
+                        </button>
+                        <button class="btn-outline" style="color:#ef4444;" onclick="deleteEvent(${event.id})">
+                            <i class="fas fa-trash"></i> 删除
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+
+        elements.eventManageList.innerHTML = html;
+    }
+
+    if (elements.eventAddBtn) {
+        elements.eventAddBtn.onclick = () => {
+            openEventEditModal(null);
+        };
+    }
+
+    window.openEventEditModal = (eventId) => {
+        elements.eventEditForm.reset();
+        elements.eventEditId.value = eventId || '';
+
+        if (eventId) {
+            const event = allEvents.find(e => e.id === eventId);
+            if (event) {
+                elements.eventEditTitle.value = event.title;
+                elements.eventEditDate.value = event.date;
+                elements.eventEditType.value = event.type;
+                elements.eventEditDesc.value = event.description;
+            }
+        } else {
+            elements.eventEditDate.value = formatDate(new Date());
+        }
+
+        elements.eventEditModal.classList.remove('hidden');
+    };
+
+    if (elements.eventEditClose) {
+        elements.eventEditClose.onclick = () => elements.eventEditModal.classList.add('hidden');
+    }
+    if (elements.eventEditCancel) {
+        elements.eventEditCancel.onclick = () => elements.eventEditModal.classList.add('hidden');
+    }
+
+    elements.eventEditForm.onsubmit = async (e) => {
+        e.preventDefault();
+        const payload = {
+            title: elements.eventEditTitle.value,
+            date: elements.eventEditDate.value,
+            type: elements.eventEditType.value,
+            description: elements.eventEditDesc.value,
+            created_by: currentUser.username
+        };
+
+        const eventId = elements.eventEditId.value;
+        const url = eventId ? '/api/events/update' : '/api/events/create';
+        if (eventId) payload.id = parseInt(eventId);
+
+        try {
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await resp.json();
+            if (resp.ok && data.status === 'success') {
+                showToast(eventId ? '活动已更新！' : '活动已创建！');
+                elements.eventEditModal.classList.add('hidden');
+                await fetchAllEvents();
+                if (!document.getElementById('event-manage-tab').classList.contains('hidden')) {
+                    loadEventManage();
+                }
+                if (!document.getElementById('event-calendar-tab').classList.contains('hidden')) {
+                    renderCalendar();
+                }
+            } else {
+                showToast(data.message || '操作失败');
+            }
+        } catch (err) {
+            showToast('操作失败');
+        }
+    };
+
+    window.deleteEvent = async (eventId) => {
+        if (!confirm('确定删除该活动？')) return;
+        try {
+            const resp = await fetch('/api/events/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: eventId })
+            });
+            const data = await resp.json();
+            if (resp.ok && data.status === 'success') {
+                showToast('活动已删除');
+                elements.eventDetailModal.classList.add('hidden');
+                await fetchAllEvents();
+                if (!document.getElementById('event-manage-tab').classList.contains('hidden')) {
+                    loadEventManage();
+                }
+                if (!document.getElementById('event-calendar-tab').classList.contains('hidden')) {
+                    renderCalendar();
+                }
+            } else {
+                showToast(data.message || '删除失败');
+            }
+        } catch (err) {
+            showToast('删除失败');
+        }
+    };
+
+    // --- Subscription Modal ---
+    if (elements.calendarSubscribeBtn) {
+        elements.calendarSubscribeBtn.onclick = async () => {
+            await fetchUserSubscriptions();
+            elements.subscribeTypePeak.checked = isUserSubscribedToType('peak');
+            elements.subscribeTypePromotion.checked = isUserSubscribedToType('promotion');
+            elements.subscribeTypeHoliday.checked = isUserSubscribedToType('holiday');
+            elements.subscribeTypeOther.checked = isUserSubscribedToType('other');
+            elements.subscribeModal.classList.remove('hidden');
+        };
+    }
+
+    if (elements.subscribeClose) {
+        elements.subscribeClose.onclick = () => elements.subscribeModal.classList.add('hidden');
+    }
+    if (elements.subscribeCancel) {
+        elements.subscribeCancel.onclick = () => elements.subscribeModal.classList.add('hidden');
+    }
+
+    elements.subscribeForm.onsubmit = async (e) => {
+        e.preventDefault();
+        const selectedTypes = [];
+        if (elements.subscribeTypePeak.checked) selectedTypes.push('peak');
+        if (elements.subscribeTypePromotion.checked) selectedTypes.push('promotion');
+        if (elements.subscribeTypeHoliday.checked) selectedTypes.push('holiday');
+        if (elements.subscribeTypeOther.checked) selectedTypes.push('other');
+
+        try {
+            const currentTypes = userSubscriptions.map(s => s.eventType);
+            const toAdd = selectedTypes.filter(t => !currentTypes.includes(t));
+            const toRemove = currentTypes.filter(t => !selectedTypes.includes(t));
+
+            for (const type of toAdd) {
+                await fetch('/api/subscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUser.username, event_type: type })
+                });
+            }
+            for (const type of toRemove) {
+                await fetch('/api/unsubscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUser.username, event_type: type })
+                });
+            }
+
+            await fetchUserSubscriptions();
+            showToast('订阅设置已保存！');
+            elements.subscribeModal.classList.add('hidden');
+            if (!document.getElementById('dashboard-tab').classList.contains('hidden')) {
+                loadEventBanners();
+            }
+        } catch (err) {
+            showToast('保存失败');
+        }
+    };
+
+    // --- Notifications ---
+    async function loadNotifications() {
+        if (!elements.notificationList) return;
+        try {
+            const resp = await fetch(`/api/notifications?username=${encodeURIComponent(currentUser.username)}`);
+            const notifications = await resp.json();
+            renderNotifications(notifications);
+        } catch (err) {
+            console.error('Failed to load notifications:', err);
+            elements.notificationList.innerHTML = '<div style="text-align:center;color:#64748b;padding:40px;">加载失败</div>';
+        }
+    }
+
+    function renderNotifications(notifications) {
+        if (!notifications || notifications.length === 0) {
+            elements.notificationList.innerHTML = '<div style="text-align:center;color:#64748b;padding:40px;">暂无通知</div>';
+            if (elements.notificationUnreadCount) {
+                elements.notificationUnreadCount.style.display = 'none';
+            }
+            return;
+        }
+
+        const unreadCount = notifications.filter(n => n.readFlag !== 'yes').length;
+        if (elements.notificationUnreadCount) {
+            if (unreadCount > 0) {
+                elements.notificationUnreadCount.textContent = unreadCount > 99 ? '99+' : unreadCount;
+                elements.notificationUnreadCount.style.display = 'inline-flex';
+            } else {
+                elements.notificationUnreadCount.style.display = 'none';
+            }
+        }
+
+        const sorted = [...notifications].sort((a, b) => b.id - a.id);
+        let html = '';
+
+        sorted.forEach(notif => {
+            const typeInfo = EVENT_TYPE_INFO[notif.eventType] || EVENT_TYPE_INFO.other;
+            const isUnread = notif.readFlag !== 'yes';
+            html += `
+                <div class="notification-item ${isUnread ? 'unread' : ''}" data-id="${notif.id}" onclick="markNotificationRead(${notif.id}, this)">
+                    <div class="notification-icon notification-icon-${notif.eventType}" style="background:${typeInfo.gradient};">
+                        <i class="fas ${typeInfo.icon}"></i>
+                    </div>
+                    <div class="notification-content">
+                        <div class="notification-title">
+                            ${notif.eventTitle}
+                            ${isUnread ? '<span class="notification-unread-dot"></span>' : ''}
+                        </div>
+                        <div class="notification-body">${notif.content}</div>
+                        <div class="notification-meta">
+                            <span><i class="fas fa-calendar-day"></i> 活动日期：${notif.eventDate}</span>
+                            <span><i class="fas fa-clock"></i> ${notif.createTime || '-'}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        elements.notificationList.innerHTML = html;
+    }
+
+    window.markNotificationRead = async (id, el) => {
+        try {
+            await fetch('/api/notifications/read', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, username: currentUser.username })
+            });
+            if (el) {
+                el.classList.remove('unread');
+                const dot = el.querySelector('.notification-unread-dot');
+                if (dot) dot.remove();
+            }
+            loadNotifications();
+        } catch (err) {
+            console.error('Failed to mark notification read:', err);
+        }
+    };
+
+    if (elements.notificationMarkAllBtn) {
+        elements.notificationMarkAllBtn.onclick = async () => {
+            try {
+                const resp = await fetch(`/api/notifications?username=${encodeURIComponent(currentUser.username)}`);
+                const notifications = await resp.json();
+                const unread = notifications.filter(n => n.readFlag !== 'yes');
+                for (const n of unread) {
+                    await fetch('/api/notifications/read', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: n.id, username: currentUser.username })
+                    });
+                }
+                showToast('已全部标记为已读');
+                loadNotifications();
+            } catch (err) {
+                showToast('操作失败');
+            }
         };
     }
 

@@ -197,3 +197,106 @@ int is_user_blocked(const char *blocker, const char *blocked) {
   }
   return 0;
 }
+
+void get_events_json(char *buf, const char *date_filter, const char *type_filter) {
+  strcat(buf, "[");
+  int first = 1;
+  char dec_date[100] = {0};
+  if (date_filter && strlen(date_filter) > 0) {
+    url_decode(dec_date, date_filter);
+  }
+  char dec_type[100] = {0};
+  if (type_filter && strlen(type_filter) > 0) {
+    url_decode(dec_type, type_filter);
+  }
+
+  for (int i = 0; i < event_count; i++) {
+    if (strlen(dec_date) > 0 && strcmp(events[i].date, dec_date) != 0)
+      continue;
+    if (strlen(dec_type) > 0 && strcmp(events[i].type, dec_type) != 0)
+      continue;
+
+    if (!first)
+      strcat(buf, ",");
+    char item[2048];
+    sprintf(item,
+            "{\"id\":%d,\"title\":\"%s\",\"date\":\"%s\",\"type\":\"%s\","
+            "\"description\":\"%s\",\"createdBy\":\"%s\",\"createTime\":\"%s\"}",
+            events[i].id, events[i].title, events[i].date, events[i].type,
+            events[i].description, events[i].created_by, events[i].create_time);
+    strcat(buf, item);
+    first = 0;
+  }
+  strcat(buf, "]");
+}
+
+void get_event_json(char *buf, int event_id) {
+  for (int i = 0; i < event_count; i++) {
+    if (events[i].id == event_id) {
+      sprintf(buf,
+              "{\"id\":%d,\"title\":\"%s\",\"date\":\"%s\",\"type\":\"%s\","
+              "\"description\":\"%s\",\"createdBy\":\"%s\",\"createTime\":\"%s\"}",
+              events[i].id, events[i].title, events[i].date, events[i].type,
+              events[i].description, events[i].created_by, events[i].create_time);
+      return;
+    }
+  }
+  strcpy(buf, "{}");
+}
+
+void get_subscriptions_json(char *buf, const char *username_filter) {
+  strcat(buf, "[");
+  int first = 1;
+
+  for (int i = 0; i < subscription_count; i++) {
+    if (username_filter && strlen(username_filter) > 0 &&
+        strcmp(subscriptions[i].username, username_filter) != 0)
+      continue;
+
+    if (!first)
+      strcat(buf, ",");
+    char item[512];
+    sprintf(item,
+            "{\"id\":%d,\"username\":\"%s\",\"eventType\":\"%s\",\"createTime\":\"%s\"}",
+            subscriptions[i].id, subscriptions[i].username,
+            subscriptions[i].event_type, subscriptions[i].create_time);
+    strcat(buf, item);
+    first = 0;
+  }
+  strcat(buf, "]");
+}
+
+void get_notifications_json(char *buf, const char *username_filter) {
+  strcat(buf, "[");
+  int first = 1;
+
+  for (int i = notification_count - 1; i >= 0; i--) {
+    if (username_filter && strlen(username_filter) > 0 &&
+        strcmp(notifications[i].username, username_filter) != 0)
+      continue;
+
+    if (!first)
+      strcat(buf, ",");
+    char item[1500];
+    sprintf(item,
+            "{\"id\":%d,\"username\":\"%s\",\"eventTitle\":\"%s\",\"eventDate\":\"%s\","
+            "\"eventType\":\"%s\",\"content\":\"%s\",\"createTime\":\"%s\",\"readFlag\":\"%s\"}",
+            notifications[i].id, notifications[i].username,
+            notifications[i].event_title, notifications[i].event_date,
+            notifications[i].event_type, notifications[i].content,
+            notifications[i].create_time, notifications[i].read_flag);
+    strcat(buf, item);
+    first = 0;
+  }
+  strcat(buf, "]");
+}
+
+int is_user_subscribed(const char *username, const char *event_type) {
+  for (int i = 0; i < subscription_count; i++) {
+    if (strcmp(subscriptions[i].username, username) == 0 &&
+        strcmp(subscriptions[i].event_type, event_type) == 0) {
+      return 1;
+    }
+  }
+  return 0;
+}
