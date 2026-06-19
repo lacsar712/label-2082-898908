@@ -81,6 +81,7 @@
                 <a href="#" class="nav-item" data-tab="event-calendar"><i class="fas fa-calendar-alt"></i> 活动日历</a>
                 <a href="#" class="nav-item" data-tab="event-manage" id="nav-event-manage" style="display:none;"><i class="fas fa-edit"></i> 活动管理</a>
                 <a href="#" class="nav-item" data-tab="notifications" id="nav-notifications"><i class="fas fa-bell"></i> 通知中心 <span class="cert-badge" id="notification-unread-count" style="display:none; background: #ef4444; margin-left: 6px;">0</span></a>
+                <a href="#" class="nav-item" data-tab="messages" id="nav-messages"><i class="fas fa-comment-dots"></i> 站内私信 <span class="cert-badge" id="msg-unread-count" style="display:none; background: #6366f1; margin-left: 6px;">0</span></a>
                 <a href="#" class="nav-item" data-tab="blacklist"><i class="fas fa-ban"></i> 黑名单管理</a>
                 <a href="#" class="nav-item" data-tab="profile"><i class="fas fa-user-circle"></i> 个人中心</a>
             </nav>
@@ -651,6 +652,45 @@
                 </div>
                 <div class="notification-list" id="notification-list">
                     <div style="text-align: center; color: #64748b; padding: 40px;">加载中...</div>
+                </div>
+            </section>
+
+            <!-- Messages (Private Messaging) -->
+            <section class="view-section hidden" id="messages-tab">
+                <div class="msg-container">
+                    <div class="msg-sidebar" id="msg-sidebar">
+                        <div class="msg-sidebar-header">
+                            <h3><i class="fas fa-comment-dots"></i> 私信</h3>
+                        </div>
+                        <div class="msg-search">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="msg-search-input" placeholder="搜索联系人...">
+                        </div>
+                        <div class="msg-conversation-list" id="msg-conversation-list">
+                            <div class="msg-empty">暂无会话</div>
+                        </div>
+                    </div>
+                    <div class="msg-main" id="msg-main">
+                        <div class="msg-empty-state" id="msg-empty-state">
+                            <i class="fas fa-comments"></i>
+                            <p>选择一个会话开始聊天</p>
+                        </div>
+                        <div class="msg-chat hidden" id="msg-chat">
+                            <div class="msg-chat-header" id="msg-chat-header">
+                                <button class="msg-back-btn" id="msg-back-btn"><i class="fas fa-arrow-left"></i></button>
+                                <img class="msg-chat-avatar" id="msg-chat-avatar" src="" alt="">
+                                <div class="msg-chat-info">
+                                    <span class="msg-chat-name" id="msg-chat-name"></span>
+                                    <span class="msg-chat-status">在线</span>
+                                </div>
+                            </div>
+                            <div class="msg-chat-messages" id="msg-chat-messages"></div>
+                            <div class="msg-chat-input">
+                                <input type="text" id="msg-input" placeholder="输入消息..." maxlength="200">
+                                <button id="msg-send-btn"><i class="fas fa-paper-plane"></i></button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </section>
 

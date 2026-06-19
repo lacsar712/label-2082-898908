@@ -23,6 +23,12 @@ extern int next_subscription_id;
 extern EventNotification notifications[MAX_NOTIFICATIONS];
 extern int notification_count;
 extern int next_notification_id;
+extern MessageThread threads[MAX_THREADS];
+extern int thread_count;
+extern int next_thread_id;
+extern Message messages[MAX_MESSAGES];
+extern int message_count;
+extern int next_message_id;
 
 void save_data();
 void load_data();
@@ -36,5 +42,7 @@ void save_subscription_data();
 void load_subscription_data();
 void save_notification_data();
 void load_notification_data();
+void save_message_data();
+void load_message_data();
 
 #endif

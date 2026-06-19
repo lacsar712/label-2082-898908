@@ -132,11 +132,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
         notificationList: document.getElementById('notification-list'),
         notificationMarkAllBtn: document.getElementById('notification-mark-all-btn'),
-        notificationUnreadCount: document.getElementById('notification-unread-count')
+        notificationUnreadCount: document.getElementById('notification-unread-count'),
+
+        msgConversationList: document.getElementById('msg-conversation-list'),
+        msgSearchInput: document.getElementById('msg-search-input'),
+        msgEmptyState: document.getElementById('msg-empty-state'),
+        msgChat: document.getElementById('msg-chat'),
+        msgChatMessages: document.getElementById('msg-chat-messages'),
+        msgChatName: document.getElementById('msg-chat-name'),
+        msgChatAvatar: document.getElementById('msg-chat-avatar'),
+        msgInput: document.getElementById('msg-input'),
+        msgSendBtn: document.getElementById('msg-send-btn'),
+        msgBackBtn: document.getElementById('msg-back-btn'),
+        msgUnreadCount: document.getElementById('msg-unread-count'),
+        msgSidebar: document.getElementById('msg-sidebar')
     };
 
     let auditFilter = 'pending';
     const userBlacklistCache = {};
+    let currentMsgThread = null;
+    let currentMsgPeer = null;
+    const msgDrafts = JSON.parse(localStorage.getItem('msg_drafts') || '{}');
+    const userRealNameCache = {};
+    let msgPollInterval = null;
 
     let currentCalendarDate = new Date();
     let allEvents = [];
@@ -202,6 +220,7 @@ document.addEventListener('DOMContentLoaded', () => {
             loadBlacklistCache();
             loadEventBanners();
             loadWeatherCard();
+            updateMsgUnreadCount();
 
             // Go to dashboard by default to clear any previous account's tab state
             document.querySelector('[data-tab="dashboard"]').click();
@@ -319,6 +338,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tab === 'event-calendar') loadEventCalendar();
             if (tab === 'event-manage') loadEventManage();
             if (tab === 'notifications') loadNotifications();
+            if (tab === 'messages') loadMessages();
         };
     });
 
@@ -412,16 +432,30 @@ document.addEventListener('DOMContentLoaded', () => {
                         <i class="fas fa-route"></i> 查看路线
                     </button>
                     ${order.creator !== currentUser.username ? `
+                    <button class="msg-pm-btn" onclick="openChatWith('${order.creator}')">
+                        <i class="fas fa-comment-dots"></i> 私信发布人
+                    </button>
                     <button class="block-action-btn ${userBlacklistCache[order.creator] ? 'blocked' : ''}" 
                             onclick="toggleBlacklist('${order.creator}', this)">
                         <i class="fas ${userBlacklistCache[order.creator] ? 'fa-check' : 'fa-ban'}"></i>
                         ${userBlacklistCache[order.creator] ? '已拉黑发布人' : '拉黑发布人'}
                     </button>` : ''}
                     ${order.worker && order.worker !== currentUser.username ? `
+                    <button class="msg-pm-btn" onclick="openChatWith('${order.worker}')">
+                        <i class="fas fa-comment-dots"></i> 私信接单人
+                    </button>
                     <button class="block-action-btn ${userBlacklistCache[order.worker] ? 'blocked' : ''}" 
                             onclick="toggleBlacklist('${order.worker}', this)">
                         <i class="fas ${userBlacklistCache[order.worker] ? 'fa-check' : 'fa-ban'}"></i>
                         ${userBlacklistCache[order.worker] ? '已拉黑接单人' : '拉黑接单人'}
+                    </button>` : ''}
+                    ${isMyOrders && order.creator === currentUser.username && order.worker && order.worker !== currentUser.username ? `
+                    <button class="msg-pm-btn" onclick="openChatWith('${order.worker}')">
+                        <i class="fas fa-comment-dots"></i> 私信接单人
+                    </button>` : ''}
+                    ${isMyOrders && order.worker === currentUser.username && order.creator !== currentUser.username ? `
+                    <button class="msg-pm-btn" onclick="openChatWith('${order.creator}')">
+                        <i class="fas fa-comment-dots"></i> 私信发布人
                     </button>` : ''}
                 </div>
             `;
@@ -2962,6 +2996,322 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     initGuideAnchorNav();
+
+    // --- Private Messaging ---
+    async function fetchUserRealName(username) {
+        if (userRealNameCache[username]) return userRealNameCache[username];
+        try {
+            const resp = await fetch(`/api/user?username=${encodeURIComponent(username)}`);
+            const data = await resp.json();
+            if (data && data.realName) {
+                userRealNameCache[username] = data.realName;
+                return data.realName;
+            }
+        } catch (err) {
+            console.error('Failed to fetch user real name:', err);
+        }
+        return username;
+    }
+
+    async function loadMessages() {
+        if (!currentUser) return;
+        await loadConversations();
+        await updateMsgUnreadCount();
+        if (msgPollInterval) clearInterval(msgPollInterval);
+        msgPollInterval = setInterval(async () => {
+            await updateMsgUnreadCount();
+        }, 10000);
+    }
+
+    async function updateMsgUnreadCount() {
+        if (!currentUser) return;
+        try {
+            const resp = await fetch(`/api/messages/unread?username=${encodeURIComponent(currentUser.username)}`);
+            const data = await resp.json();
+            const count = data.count || 0;
+            if (elements.msgUnreadCount) {
+                if (count > 0) {
+                    elements.msgUnreadCount.textContent = count > 99 ? '99+' : count;
+                    elements.msgUnreadCount.style.display = 'inline-flex';
+                } else {
+                    elements.msgUnreadCount.style.display = 'none';
+                }
+            }
+        } catch (err) {
+            console.error('Failed to update unread count:', err);
+        }
+    }
+
+    async function loadConversations() {
+        if (!elements.msgConversationList) return;
+        try {
+            const resp = await fetch(`/api/messages/conversations?username=${encodeURIComponent(currentUser.username)}`);
+            const conversations = await resp.json();
+            await renderConversations(conversations);
+        } catch (err) {
+            console.error('Failed to load conversations:', err);
+            elements.msgConversationList.innerHTML = '<div class="msg-empty">加载失败</div>';
+        }
+    }
+
+    async function renderConversations(conversations) {
+        if (!conversations || conversations.length === 0) {
+            elements.msgConversationList.innerHTML = '<div class="msg-empty">暂无会话</div>';
+            return;
+        }
+
+        const searchTerm = elements.msgSearchInput ? elements.msgSearchInput.value.trim().toLowerCase() : '';
+        let html = '';
+
+        for (const conv of conversations) {
+            const peerUsername = conv.user1 === currentUser.username ? conv.user2 : conv.user1;
+            const peerName = await fetchUserRealName(peerUsername);
+
+            if (searchTerm && !peerName.toLowerCase().includes(searchTerm) && !peerUsername.toLowerCase().includes(searchTerm)) {
+                continue;
+            }
+
+            const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(peerUsername)}`;
+            const lastMsg = conv.lastMessage || '';
+            const lastTime = conv.lastTime ? formatMsgTime(conv.lastTime) : '';
+            const isActive = currentMsgThread && currentMsgThread === conv.id;
+
+            let hasUnread = false;
+            try {
+                const msgResp = await fetch(`/api/messages?threadId=${conv.id}`);
+                const msgs = await msgResp.json();
+                hasUnread = msgs.some(m => m.sender !== currentUser.username && m.readFlag === 'no');
+            } catch (e) { /* ignore */ }
+
+            html += `
+                <div class="msg-conversation-item ${isActive ? 'active' : ''}" data-thread-id="${conv.id}" data-peer="${peerUsername}" onclick="selectConversation(${conv.id}, '${peerUsername}')">
+                    <img class="msg-conversation-avatar" src="${avatarUrl}" alt="${peerName}">
+                    <div class="msg-conversation-info">
+                        <div class="msg-conversation-top">
+                            <span class="msg-conversation-name">${peerName}</span>
+                            <span class="msg-conversation-time">${lastTime}</span>
+                        </div>
+                        <div class="msg-conversation-preview">${escapeHtml(lastMsg)}</div>
+                    </div>
+                    ${hasUnread ? '<span class="msg-unread-dot"></span>' : ''}
+                </div>
+            `;
+        }
+
+        elements.msgConversationList.innerHTML = html || '<div class="msg-empty">无匹配结果</div>';
+    }
+
+    function formatMsgTime(timeStr) {
+        if (!timeStr) return '';
+        const parts = timeStr.split(' ');
+        if (parts.length < 2) return timeStr;
+        const datePart = parts[0];
+        const timePart = parts[1].substring(0, 5);
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        if (datePart === todayStr) return timePart;
+        return datePart.substring(5);
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    window.selectConversation = async (threadId, peerUsername) => {
+        currentMsgThread = threadId;
+        currentMsgPeer = peerUsername;
+
+        if (elements.msgEmptyState) elements.msgEmptyState.classList.add('hidden');
+        if (elements.msgChat) elements.msgChat.classList.remove('hidden');
+
+        const peerName = await fetchUserRealName(peerUsername);
+        const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(peerUsername)}`;
+
+        if (elements.msgChatName) elements.msgChatName.textContent = peerName;
+        if (elements.msgChatAvatar) elements.msgChatAvatar.src = avatarUrl;
+
+        if (elements.msgConversationList) {
+            elements.msgConversationList.querySelectorAll('.msg-conversation-item').forEach(el => {
+                el.classList.toggle('active', parseInt(el.dataset.threadId) === threadId);
+            });
+        }
+
+        const unreadDot = elements.msgConversationList.querySelector(`.msg-conversation-item[data-thread-id="${threadId}"] .msg-unread-dot`);
+        if (unreadDot) unreadDot.remove();
+
+        await fetchThreadMessages(threadId);
+        await markThreadRead(threadId);
+
+        if (msgDrafts[threadId] && elements.msgInput) {
+            elements.msgInput.value = msgDrafts[threadId];
+        } else if (elements.msgInput) {
+            elements.msgInput.value = '';
+        }
+    };
+
+    async function fetchThreadMessages(threadId) {
+        if (!elements.msgChatMessages) return;
+        try {
+            const resp = await fetch(`/api/messages?threadId=${threadId}`);
+            const messages = await resp.json();
+            renderChatMessages(messages);
+        } catch (err) {
+            console.error('Failed to fetch messages:', err);
+            elements.msgChatMessages.innerHTML = '<div class="msg-empty">加载失败</div>';
+        }
+    }
+
+    function renderChatMessages(messages) {
+        if (!elements.msgChatMessages) return;
+        if (!messages || messages.length === 0) {
+            elements.msgChatMessages.innerHTML = '<div class="msg-empty">暂无消息</div>';
+            return;
+        }
+
+        let html = '';
+        messages.forEach(msg => {
+            const isSent = msg.sender === currentUser.username;
+            const bubbleClass = isSent ? 'sent' : 'received';
+            const timeDisplay = formatMsgTime(msg.sendTime);
+            html += `
+                <div class="msg-bubble ${bubbleClass}">
+                    <div class="msg-bubble-content">${escapeHtml(msg.content)}</div>
+                    <div class="msg-bubble-time">${timeDisplay}</div>
+                </div>
+            `;
+        });
+
+        elements.msgChatMessages.innerHTML = html;
+        elements.msgChatMessages.scrollTop = elements.msgChatMessages.scrollHeight;
+    }
+
+    async function markThreadRead(threadId) {
+        try {
+            await fetch('/api/messages/read', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ threadId, username: currentUser.username })
+            });
+            await updateMsgUnreadCount();
+        } catch (err) {
+            console.error('Failed to mark messages read:', err);
+        }
+    }
+
+    async function sendMessage() {
+        if (!elements.msgInput || !currentMsgPeer || !currentUser) return;
+        const content = elements.msgInput.value.trim();
+        if (!content) return;
+
+        try {
+            const resp = await fetch('/api/messages/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sender: currentUser.username,
+                    receiver: currentMsgPeer,
+                    content: content
+                })
+            });
+
+            const data = await resp.json();
+            if (data.status === 'success') {
+                elements.msgInput.value = '';
+                delete msgDrafts[currentMsgThread];
+                localStorage.setItem('msg_drafts', JSON.stringify(msgDrafts));
+                await fetchThreadMessages(currentMsgThread);
+                await loadConversations();
+            } else {
+                showToast(data.message || '发送失败');
+            }
+        } catch (err) {
+            showToast('消息发送失败');
+        }
+    }
+
+    window.openChatWith = async (username) => {
+        if (username === currentUser.username) {
+            showToast('不能给自己发私信');
+            return;
+        }
+        document.querySelector('[data-tab="messages"]').click();
+
+        try {
+            const convResp = await fetch(`/api/messages/conversations?username=${encodeURIComponent(currentUser.username)}`);
+            const conversations = await convResp.json();
+            const existing = conversations.find(c =>
+                (c.user1 === currentUser.username && c.user2 === username) ||
+                (c.user2 === currentUser.username && c.user1 === username)
+            );
+
+            if (existing) {
+                await selectConversation(existing.id, username);
+            } else {
+                try {
+                    const sendResp = await fetch('/api/messages/send', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            sender: currentUser.username,
+                            receiver: username,
+                            content: '你好，我在订单中想和你沟通一下'
+                        })
+                    });
+                    const sendData = await sendResp.json();
+                    if (sendData.status === 'success') {
+                        await loadConversations();
+                        await selectConversation(sendData.threadId, username);
+                    }
+                } catch (err) {
+                    showToast('发起会话失败');
+                }
+            }
+        } catch (err) {
+            showToast('打开聊天失败');
+        }
+    };
+
+    if (elements.msgSendBtn) {
+        elements.msgSendBtn.onclick = () => sendMessage();
+    }
+
+    if (elements.msgInput) {
+        elements.msgInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        elements.msgInput.addEventListener('input', () => {
+            if (currentMsgThread && elements.msgInput) {
+                msgDrafts[currentMsgThread] = elements.msgInput.value;
+                localStorage.setItem('msg_drafts', JSON.stringify(msgDrafts));
+            }
+        });
+    }
+
+    if (elements.msgBackBtn) {
+        elements.msgBackBtn.onclick = () => {
+            if (elements.msgChat) elements.msgChat.classList.add('hidden');
+            if (elements.msgEmptyState) elements.msgEmptyState.classList.remove('hidden');
+            currentMsgThread = null;
+            currentMsgPeer = null;
+            if (elements.msgConversationList) {
+                elements.msgConversationList.querySelectorAll('.msg-conversation-item').forEach(el => {
+                    el.classList.remove('active');
+                });
+            }
+        };
+    }
+
+    if (elements.msgSearchInput) {
+        elements.msgSearchInput.addEventListener('input', () => {
+            loadConversations();
+        });
+    }
 
     // Init
     updateUIForLogin();

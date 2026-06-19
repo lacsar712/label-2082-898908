@@ -24,6 +24,12 @@ int next_subscription_id = 1;
 EventNotification notifications[MAX_NOTIFICATIONS];
 int notification_count = 0;
 int next_notification_id = 1;
+MessageThread threads[MAX_THREADS];
+int thread_count = 0;
+int next_thread_id = 1;
+Message messages[MAX_MESSAGES];
+int message_count = 0;
+int next_message_id = 1;
 
 void save_cert_data() {
   FILE *f = fopen("data_cert.bin", "wb");
@@ -155,6 +161,52 @@ void load_notification_data() {
   }
 }
 
+void save_message_data() {
+  FILE *ft = fopen("data_threads.bin", "wb");
+  if (ft) {
+    fwrite(&thread_count, sizeof(int), 1, ft);
+    fwrite(&next_thread_id, sizeof(int), 1, ft);
+    fwrite(threads, sizeof(MessageThread), thread_count, ft);
+    fclose(ft);
+    log_message(LOG_INFO, "Message threads data saved successfully");
+  } else {
+    log_message(LOG_ERROR, "Failed to save message threads data");
+  }
+  FILE *fm = fopen("data_messages.bin", "wb");
+  if (fm) {
+    fwrite(&message_count, sizeof(int), 1, fm);
+    fwrite(&next_message_id, sizeof(int), 1, fm);
+    fwrite(messages, sizeof(Message), message_count, fm);
+    fclose(fm);
+    log_message(LOG_INFO, "Messages data saved successfully");
+  } else {
+    log_message(LOG_ERROR, "Failed to save messages data");
+  }
+}
+
+void load_message_data() {
+  FILE *ft = fopen("data_threads.bin", "rb");
+  if (ft) {
+    fread(&thread_count, sizeof(int), 1, ft);
+    fread(&next_thread_id, sizeof(int), 1, ft);
+    fread(threads, sizeof(MessageThread), thread_count, ft);
+    fclose(ft);
+    log_message(LOG_INFO, "Loaded %d message threads", thread_count);
+  } else {
+    log_message(LOG_WARN, "No existing message threads data found");
+  }
+  FILE *fm = fopen("data_messages.bin", "rb");
+  if (fm) {
+    fread(&message_count, sizeof(int), 1, fm);
+    fread(&next_message_id, sizeof(int), 1, fm);
+    fread(messages, sizeof(Message), message_count, fm);
+    fclose(fm);
+    log_message(LOG_INFO, "Loaded %d messages", message_count);
+  } else {
+    log_message(LOG_WARN, "No existing messages data found");
+  }
+}
+
 void save_data() {
   FILE *f1 = fopen("data_orders.bin", "wb");
   if (f1) {
@@ -182,6 +234,7 @@ void save_data() {
   save_event_data();
   save_subscription_data();
   save_notification_data();
+  save_message_data();
 }
 
 void load_data() {
@@ -211,6 +264,7 @@ void load_data() {
   load_event_data();
   load_subscription_data();
   load_notification_data();
+  load_message_data();
 
   if (user_count == 0) {
     strcpy(users[user_count].username, "admin");

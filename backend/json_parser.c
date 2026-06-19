@@ -300,3 +300,98 @@ int is_user_subscribed(const char *username, const char *event_type) {
   }
   return 0;
 }
+
+void get_conversations_json(char *buf, const char *username) {
+  strcat(buf, "[");
+  int first = 1;
+
+  int indices[MAX_THREADS];
+  int cnt = 0;
+  for (int i = 0; i < thread_count; i++) {
+    if (strcmp(threads[i].user1, username) == 0 ||
+        strcmp(threads[i].user2, username) == 0) {
+      indices[cnt++] = i;
+    }
+  }
+
+  for (int pass = 0; pass < cnt - 1; pass++) {
+    for (int j = 0; j < cnt - 1 - pass; j++) {
+      if (strcmp(threads[indices[j]].last_time, threads[indices[j+1]].last_time) < 0) {
+        int tmp = indices[j];
+        indices[j] = indices[j+1];
+        indices[j+1] = tmp;
+      }
+    }
+  }
+
+  for (int k = 0; k < cnt; k++) {
+    int i = indices[k];
+    if (!first) strcat(buf, ",");
+    char item[1024];
+    sprintf(item,
+            "{\"id\":%d,\"user1\":\"%s\",\"user2\":\"%s\","
+            "\"lastMessage\":\"%s\",\"lastTime\":\"%s\"}",
+            threads[i].id, threads[i].user1, threads[i].user2,
+            threads[i].last_message, threads[i].last_time);
+    strcat(buf, item);
+    first = 0;
+  }
+  strcat(buf, "]");
+}
+
+void get_messages_json(char *buf, int thread_id) {
+  strcat(buf, "[");
+  int first = 1;
+  for (int i = 0; i < message_count; i++) {
+    if (messages[i].thread_id == thread_id) {
+      if (!first) strcat(buf, ",");
+      char item[1024];
+      sprintf(item,
+              "{\"id\":%d,\"threadId\":%d,\"sender\":\"%s\","
+              "\"content\":\"%s\",\"sendTime\":\"%s\",\"readFlag\":\"%s\"}",
+              messages[i].id, messages[i].thread_id, messages[i].sender,
+              messages[i].content, messages[i].send_time, messages[i].read_flag);
+      strcat(buf, item);
+      first = 0;
+    }
+  }
+  strcat(buf, "]");
+}
+
+int find_or_create_thread(const char *user1, const char *user2) {
+  for (int i = 0; i < thread_count; i++) {
+    if ((strcmp(threads[i].user1, user1) == 0 && strcmp(threads[i].user2, user2) == 0) ||
+        (strcmp(threads[i].user1, user2) == 0 && strcmp(threads[i].user2, user1) == 0)) {
+      return threads[i].id;
+    }
+  }
+  if (thread_count < MAX_THREADS) {
+    threads[thread_count].id = next_thread_id++;
+    strcpy(threads[thread_count].user1, user1);
+    strcpy(threads[thread_count].user2, user2);
+    strcpy(threads[thread_count].last_message, "");
+    strcpy(threads[thread_count].last_time, "");
+    thread_count++;
+    save_data();
+    return threads[thread_count - 1].id;
+  }
+  return -1;
+}
+
+int get_unread_message_count(const char *username) {
+  int count = 0;
+  for (int i = 0; i < message_count; i++) {
+    if (strcmp(messages[i].sender, username) != 0 && strcmp(messages[i].read_flag, "no") == 0) {
+      int tid = messages[i].thread_id;
+      for (int j = 0; j < thread_count; j++) {
+        if (threads[j].id == tid) {
+          if (strcmp(threads[j].user1, username) == 0 || strcmp(threads[j].user2, username) == 0) {
+            count++;
+          }
+          break;
+        }
+      }
+    }
+  }
+  return count;
+}

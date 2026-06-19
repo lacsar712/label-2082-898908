@@ -1030,6 +1030,180 @@ static void handle_mark_notification_read(int client_socket, char *body) {
   send(client_socket, response, strlen(response), 0);
 }
 
+static void handle_get_conversations(int client_socket, char *query_string) {
+  char username[50] = "";
+  if (query_string) {
+    char *u_ptr = strstr(query_string, "username=");
+    if (u_ptr)
+      sscanf(u_ptr + 9, "%[^& ]", username);
+  }
+
+  char response_header[] = "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+                           "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(MAX_THREADS * 1024);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for conversations JSON");
+    return;
+  }
+  memset(json, 0, MAX_THREADS * 1024);
+  get_conversations_json(json, username);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Conversations fetched for user: %s", username);
+}
+
+static void handle_get_messages(int client_socket, char *query_string) {
+  int thread_id = -1;
+  if (query_string) {
+    char *t_ptr = strstr(query_string, "threadId=");
+    if (t_ptr)
+      sscanf(t_ptr + 9, "%d", &thread_id);
+  }
+
+  if (thread_id < 0) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  char response_header[] = "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+                           "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(MAX_MESSAGES * 1024);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for messages JSON");
+    return;
+  }
+  memset(json, 0, MAX_MESSAGES * 1024);
+  get_messages_json(json, thread_id);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Messages fetched for thread: %d", thread_id);
+}
+
+static void handle_send_message(int client_socket, char *body) {
+  char sender[50] = "", receiver[50] = "", content[500] = "";
+  parse_json_string(body, "sender", sender, sizeof(sender));
+  parse_json_string(body, "receiver", receiver, sizeof(receiver));
+  parse_json_string(body, "content", content, sizeof(content));
+
+  if (strlen(sender) == 0 || strlen(receiver) == 0 || strlen(content) == 0) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  int tid = find_or_create_thread(sender, receiver);
+  if (tid < 0) {
+    char resp[] = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  if (message_count >= MAX_MESSAGES) {
+    char resp[] = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"消息存储已满\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  time_t now = time(NULL);
+  struct tm *t = localtime(&now);
+  char time_str[30];
+  snprintf(time_str, sizeof(time_str), "%04d-%02d-%02d %02d:%02d:%02d",
+           t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+           t->tm_hour, t->tm_min, t->tm_sec);
+
+  messages[message_count].id = next_message_id++;
+  messages[message_count].thread_id = tid;
+  strcpy(messages[message_count].sender, sender);
+  strcpy(messages[message_count].content, content);
+  strcpy(messages[message_count].send_time, time_str);
+  strcpy(messages[message_count].read_flag, "no");
+  message_count++;
+
+  for (int i = 0; i < thread_count; i++) {
+    if (threads[i].id == tid) {
+      strncpy(threads[i].last_message, content, sizeof(threads[i].last_message) - 1);
+      threads[i].last_message[sizeof(threads[i].last_message) - 1] = '\0';
+      strcpy(threads[i].last_time, time_str);
+      break;
+    }
+  }
+
+  save_data();
+
+  char resp[256];
+  snprintf(resp, sizeof(resp),
+           "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+           "{\"status\":\"success\",\"threadId\":%d,\"messageId\":%d,\"sendTime\":\"%s\"}",
+           tid, messages[message_count - 1].id, time_str);
+  send(client_socket, resp, strlen(resp), 0);
+
+  log_message(LOG_INFO, "Message sent from %s to %s in thread %d", sender, receiver, tid);
+}
+
+static void handle_mark_messages_read(int client_socket, char *body) {
+  int thread_id = -1;
+  char username[50] = "";
+
+  char *t_ptr = strstr(body, "\"threadId\":");
+  if (t_ptr)
+    sscanf(t_ptr + 11, "%d", &thread_id);
+  parse_json_string(body, "username", username, sizeof(username));
+
+  if (thread_id < 0 || strlen(username) == 0) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  for (int i = 0; i < message_count; i++) {
+    if (messages[i].thread_id == thread_id &&
+        strcmp(messages[i].sender, username) != 0 &&
+        strcmp(messages[i].read_flag, "no") == 0) {
+      strcpy(messages[i].read_flag, "yes");
+    }
+  }
+  save_data();
+
+  char response[] = "HTTP/1.1 200 OK\r\nContent-Type: "
+                    "application/json\r\n\r\n{\"status\":\"success\"}";
+  send(client_socket, response, strlen(response), 0);
+
+  log_message(LOG_INFO, "Messages marked read in thread %d for user %s", thread_id, username);
+}
+
+static void handle_get_unread_count(int client_socket, char *query_string) {
+  char username[50] = "";
+  if (query_string) {
+    char *u_ptr = strstr(query_string, "username=");
+    if (u_ptr)
+      sscanf(u_ptr + 9, "%[^& ]", username);
+  }
+
+  int count = get_unread_message_count(username);
+
+  char response_header[] = "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+                           "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char json[128];
+  snprintf(json, sizeof(json), "{\"count\":%d}", count);
+  send(client_socket, json, strlen(json), 0);
+
+  log_message(LOG_INFO, "Unread message count for %s: %d", username, count);
+}
+
 static void handle_get_nearby_orders(int client_socket, char *query_string) {
   char building_raw[50] = "";
   char building[50] = "";
@@ -1385,6 +1559,30 @@ void handle_request(int client_socket) {
     if (body) {
       body += 4;
       handle_mark_notification_read(client_socket, body);
+    }
+  } else if (strstr(buffer, "GET /api/messages/unread")) {
+    char *path_start = strstr(buffer, "GET /api/messages/unread");
+    char *q = strstr(path_start, "?");
+    handle_get_unread_count(client_socket, q);
+  } else if (strstr(buffer, "GET /api/messages/conversations")) {
+    char *path_start = strstr(buffer, "GET /api/messages/conversations");
+    char *q = strstr(path_start, "?");
+    handle_get_conversations(client_socket, q);
+  } else if (strstr(buffer, "GET /api/messages")) {
+    char *path_start = strstr(buffer, "GET /api/messages");
+    char *q = strstr(path_start, "?");
+    handle_get_messages(client_socket, q);
+  } else if (strstr(buffer, "POST /api/messages/send")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_send_message(client_socket, body);
+    }
+  } else if (strstr(buffer, "POST /api/messages/read")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_mark_messages_read(client_socket, body);
     }
   } else {
     log_message(LOG_WARN, "404 Not Found: %.50s", buffer);

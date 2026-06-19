@@ -8,6 +8,8 @@
 #define MAX_EVENTS 500
 #define MAX_SUBSCRIPTIONS 1000
 #define MAX_NOTIFICATIONS 2000
+#define MAX_THREADS 1000
+#define MAX_MESSAGES 10000
 #define BUFFER_SIZE 20480
 
 typedef struct {
@@ -86,5 +88,22 @@ typedef struct {
   char blocked_real_name[50];
   char create_time[30];
 } BlacklistEntry;
+
+typedef struct {
+  int id;
+  char user1[50];
+  char user2[50];
+  char last_message[200];
+  char last_time[30];
+} MessageThread;
+
+typedef struct {
+  int id;
+  int thread_id;
+  char sender[50];
+  char content[500];
+  char send_time[30];
+  char read_flag[10];
+} Message;
 
 #endif
