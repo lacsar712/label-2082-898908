@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
         myOrdersList: document.getElementById('my-orders-list'),
         activeCount: document.getElementById('active-count'),
         orderForm: document.getElementById('order-form'),
+        pkgSize: document.getElementById('pkg-size'),
         navItems: document.querySelectorAll('.nav-item'),
         filterPills: document.querySelectorAll('.pill'),
         viewSections: document.querySelectorAll('.view-section'),
@@ -502,6 +503,7 @@ document.addEventListener('DOMContentLoaded', () => {
             pickup: document.getElementById('pkg-pickup').value,
             delivery: document.getElementById('pkg-delivery').value,
             reward: document.getElementById('pkg-reward').value,
+            size: document.getElementById('pkg-size').value,
             creator: currentUser.username
         };
         try {
@@ -1439,6 +1441,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('pkg-pickup').value = result.pickup;
             document.getElementById('pkg-delivery').value = result.delivery;
             document.getElementById('pkg-reward').value = result.total.toFixed(2);
+            document.getElementById('pkg-size').value = result.size;
 
             let pkgDesc = '';
             const sizeLabel = SIZE_FEE[result.size]?.label || '常规';
@@ -2920,6 +2923,45 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     }
+
+    // --- Package Size Guide ---
+    window.postWithSize = (size) => {
+        if (!SIZE_FEE[size]) {
+            size = 'medium';
+        }
+        const pkgSizeEl = document.getElementById('pkg-size');
+        if (pkgSizeEl) {
+            pkgSizeEl.value = size;
+        }
+
+        const sizeLabel = SIZE_FEE[size]?.label || '中件';
+        const pkgNameEl = document.getElementById('pkg-name');
+        if (pkgNameEl && !pkgNameEl.value) {
+            pkgNameEl.value = `${sizeLabel}包裹`;
+        }
+
+        document.querySelector('[data-tab="post-task"]').click();
+        showToast(`已选择${sizeLabel}，请完善信息后发布`);
+    };
+
+    function initGuideAnchorNav() {
+        const guideTab = document.getElementById('package-guide-tab');
+        if (!guideTab) return;
+
+        const anchorBtns = guideTab.querySelectorAll('.anchor-btn');
+        anchorBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const targetId = btn.getAttribute('href').substring(1);
+                const targetEl = document.getElementById(targetId);
+                if (targetEl) {
+                    targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+    }
+
+    initGuideAnchorNav();
 
     // Init
     updateUIForLogin();

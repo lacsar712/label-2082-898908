@@ -72,6 +72,7 @@
                 <a href="#" class="nav-item" data-tab="route-plan"><i class="fas fa-route"></i> 路线规划</a>
                 <a href="#" class="nav-item" data-tab="mutual-aid"><i class="fas fa-hands-helping"></i> 楼栋互助</a>
                 <a href="#" class="nav-item" data-tab="price-calc"><i class="fas fa-calculator"></i> 报价计算器</a>
+                <a href="#" class="nav-item" data-tab="package-guide"><i class="fas fa-atlas"></i> 包裹尺寸图鉴</a>
                 <a href="#" class="nav-item" data-tab="post-task"><i class="fas fa-plus-circle"></i> 发布悬赏</a>
                 <a href="#" class="nav-item" data-tab="cert-apply" id="nav-cert-apply"><i class="fas fa-id-card"></i> 跑腿认证</a>
                 <a href="#" class="nav-item" data-tab="cert-record" id="nav-cert-record"><i class="fas fa-history"></i> 认证记录</a>
@@ -459,14 +460,23 @@
                         </div>
                         <div class="form-grid">
                             <div class="form-group">
+                                <label>包裹大小</label>
+                                <select id="pkg-size">
+                                    <option value="small">小件（信封、小包裹）</option>
+                                    <option value="medium" selected>中件（常规快递盒）</option>
+                                    <option value="large">大件（纸箱、重物）</option>
+                                    <option value="xlarge">超大件（家具、家电）</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
                                 <label>悬赏报酬</label>
                                 <input type="text" id="pkg-reward" placeholder="如：5.0元" maxlength="10" required>
                             </div>
-                            <div class="form-group">
-                                <label>联系人</label>
-                                <div style="padding: 12px; background: #f1f5f9; border-radius: 8px; color: #64748b;">
-                                    <i class="fas fa-user-circle"></i> <span id="pkg-customer-disp">加载中...</span>
-                                </div>
+                        </div>
+                        <div class="form-group">
+                            <label>联系人</label>
+                            <div style="padding: 12px; background: #f1f5f9; border-radius: 8px; color: #64748b;">
+                                <i class="fas fa-user-circle"></i> <span id="pkg-customer-disp">加载中...</span>
                             </div>
                         </div>
                         <button type="submit" class="submit-btn">立即发布任务</button>
@@ -641,6 +651,274 @@
                 </div>
                 <div class="notification-list" id="notification-list">
                     <div style="text-align: center; color: #64748b; padding: 40px;">加载中...</div>
+                </div>
+            </section>
+
+            <!-- Package Size Guide -->
+            <section class="view-section hidden" id="package-guide-tab">
+                <div class="guide-header">
+                    <div class="guide-title-section">
+                        <h1><i class="fas fa-atlas"></i> 包裹尺寸图鉴</h1>
+                        <p>快速了解不同尺寸包裹的特点，合理选择悬赏金额</p>
+                    </div>
+                </div>
+
+                <div class="guide-anchor-nav">
+                    <a href="#guide-small" class="anchor-btn small-anchor">
+                        <i class="fas fa-envelope"></i> 小件
+                    </a>
+                    <a href="#guide-medium" class="anchor-btn medium-anchor">
+                        <i class="fas fa-box"></i> 中件
+                    </a>
+                    <a href="#guide-large" class="anchor-btn large-anchor">
+                        <i class="fas fa-boxes"></i> 大件
+                    </a>
+                    <a href="#guide-xlarge" class="anchor-btn xlarge-anchor">
+                        <i class="fas fa-truck-loading"></i> 超大件
+                    </a>
+                </div>
+
+                <div class="guide-cards-container">
+                    <div class="guide-card" id="guide-small" data-size="small">
+                        <div class="guide-card-header small">
+                            <div class="guide-card-icon">
+                                <i class="fas fa-envelope"></i>
+                            </div>
+                            <div class="guide-card-title">
+                                <h3>小件包裹</h3>
+                                <span class="size-tag small-tag">Small</span>
+                            </div>
+                        </div>
+
+                        <div class="guide-card-body">
+                            <div class="guide-section">
+                                <h4><i class="fas fa-ruler-combined"></i> 典型尺寸</h4>
+                                <p>长+宽+高 ≤ 60cm，重量 ≤ 2kg</p>
+                            </div>
+
+                            <div class="guide-section">
+                                <h4><i class="fas fa-shopping-bag"></i> 常见物品</h4>
+                                <div class="item-tags">
+                                    <span class="item-tag">文件信封</span>
+                                    <span class="item-tag">手机配件</span>
+                                    <span class="item-tag">化妆品</span>
+                                    <span class="item-tag">袜子内衣</span>
+                                    <span class="item-tag">文具</span>
+                                    <span class="item-tag">零食</span>
+                                </div>
+                            </div>
+
+                            <div class="guide-section">
+                                <h4><i class="fas fa-coins"></i> 建议悬赏区间</h4>
+                                <div class="price-range">
+                                    <span class="price-min">¥2</span>
+                                    <div class="price-bar-guide">
+                                        <div class="price-fill small-fill"></div>
+                                    </div>
+                                    <span class="price-max">¥4</span>
+                                </div>
+                            </div>
+
+                            <div class="guide-section tips-section">
+                                <h4><i class="fas fa-lightbulb"></i> 取件注意事项</h4>
+                                <ul class="tips-list">
+                                    <li><i class="fas fa-check-circle"></i> 体积小易携带，可顺路多件取</li>
+                                    <li><i class="fas fa-check-circle"></i> 注意检查包装是否完好</li>
+                                    <li><i class="fas fa-check-circle"></i> 贵重物品建议当面验收</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="guide-card-footer">
+                            <button class="guide-post-btn" onclick="postWithSize('small')">
+                                <i class="fas fa-paper-plane"></i> 发布小件悬赏
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="guide-card" id="guide-medium" data-size="medium">
+                        <div class="guide-card-header medium">
+                            <div class="guide-card-icon">
+                                <i class="fas fa-box"></i>
+                            </div>
+                            <div class="guide-card-title">
+                                <h3>中件包裹</h3>
+                                <span class="size-tag medium-tag">Medium</span>
+                            </div>
+                        </div>
+
+                        <div class="guide-card-body">
+                            <div class="guide-section">
+                                <h4><i class="fas fa-ruler-combined"></i> 典型尺寸</h4>
+                                <p>长+宽+高 60-120cm，重量 2-10kg</p>
+                            </div>
+
+                            <div class="guide-section">
+                                <h4><i class="fas fa-shopping-bag"></i> 常见物品</h4>
+                                <div class="item-tags">
+                                    <span class="item-tag">鞋盒</span>
+                                    <span class="item-tag">衣服外套</span>
+                                    <span class="item-tag">书籍</span>
+                                    <span class="item-tag">小型电器</span>
+                                    <span class="item-tag">日用品</span>
+                                    <span class="item-tag">零食大礼包</span>
+                                </div>
+                            </div>
+
+                            <div class="guide-section">
+                                <h4><i class="fas fa-coins"></i> 建议悬赏区间</h4>
+                                <div class="price-range">
+                                    <span class="price-min">¥3</span>
+                                    <div class="price-bar-guide">
+                                        <div class="price-fill medium-fill"></div>
+                                    </div>
+                                    <span class="price-max">¥6</span>
+                                </div>
+                            </div>
+
+                            <div class="guide-section tips-section">
+                                <h4><i class="fas fa-lightbulb"></i> 取件注意事项</h4>
+                                <ul class="tips-list">
+                                    <li><i class="fas fa-check-circle"></i> 常规快递盒大小，手提即可</li>
+                                    <li><i class="fas fa-check-circle"></i> 注意包裹是否有拆封痕迹</li>
+                                    <li><i class="fas fa-check-circle"></i> 较重物品可考虑使用手推车</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="guide-card-footer">
+                            <button class="guide-post-btn" onclick="postWithSize('medium')">
+                                <i class="fas fa-paper-plane"></i> 发布中件悬赏
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="guide-card" id="guide-large" data-size="large">
+                        <div class="guide-card-header large">
+                            <div class="guide-card-icon">
+                                <i class="fas fa-boxes"></i>
+                            </div>
+                            <div class="guide-card-title">
+                                <h3>大件包裹</h3>
+                                <span class="size-tag large-tag">Large</span>
+                            </div>
+                        </div>
+
+                        <div class="guide-card-body">
+                            <div class="guide-section">
+                                <h4><i class="fas fa-ruler-combined"></i> 典型尺寸</h4>
+                                <p>长+宽+高 120-200cm，重量 10-30kg</p>
+                            </div>
+
+                            <div class="guide-section">
+                                <h4><i class="fas fa-shopping-bag"></i> 常见物品</h4>
+                                <div class="item-tags">
+                                    <span class="item-tag">大纸箱</span>
+                                    <span class="item-tag">行李箱</span>
+                                    <span class="item-tag">牛奶/水整箱</span>
+                                    <span class="item-tag">棉被枕头</span>
+                                    <span class="item-tag">运动鞋多双</span>
+                                    <span class="item-tag">小家电</span>
+                                </div>
+                            </div>
+
+                            <div class="guide-section">
+                                <h4><i class="fas fa-coins"></i> 建议悬赏区间</h4>
+                                <div class="price-range">
+                                    <span class="price-min">¥5</span>
+                                    <div class="price-bar-guide">
+                                        <div class="price-fill large-fill"></div>
+                                    </div>
+                                    <span class="price-max">¥10</span>
+                                </div>
+                            </div>
+
+                            <div class="guide-section tips-section">
+                                <h4><i class="fas fa-lightbulb"></i> 取件注意事项</h4>
+                                <ul class="tips-list">
+                                    <li><i class="fas fa-check-circle"></i> 体积较大，建议使用手推车</li>
+                                    <li><i class="fas fa-check-circle"></i> 重物注意保护腰部，量力而行</li>
+                                    <li><i class="fas fa-check-circle"></i> 大件物品可能需到驿站外取</li>
+                                    <li><i class="fas fa-check-circle"></i> 易碎物品请提前沟通搬运方式</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="guide-card-footer">
+                            <button class="guide-post-btn" onclick="postWithSize('large')">
+                                <i class="fas fa-paper-plane"></i> 发布大件悬赏
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="guide-card" id="guide-xlarge" data-size="xlarge">
+                        <div class="guide-card-header xlarge">
+                            <div class="guide-card-icon">
+                                <i class="fas fa-truck-loading"></i>
+                            </div>
+                            <div class="guide-card-title">
+                                <h3>超大件包裹</h3>
+                                <span class="size-tag xlarge-tag">X-Large</span>
+                            </div>
+                        </div>
+
+                        <div class="guide-card-body">
+                            <div class="guide-section">
+                                <h4><i class="fas fa-ruler-combined"></i> 典型尺寸</h4>
+                                <p>长+宽+高 ≥ 200cm，重量 ≥ 30kg</p>
+                            </div>
+
+                            <div class="guide-section">
+                                <h4><i class="fas fa-shopping-bag"></i> 常见物品</h4>
+                                <div class="item-tags">
+                                    <span class="item-tag">家具</span>
+                                    <span class="item-tag">家电</span>
+                                    <span class="item-tag">健身器材</span>
+                                    <span class="item-tag">乐器</span>
+                                    <span class="item-tag">毕业行李</span>
+                                    <span class="item-tag">大型收纳</span>
+                                </div>
+                            </div>
+
+                            <div class="guide-section">
+                                <h4><i class="fas fa-coins"></i> 建议悬赏区间</h4>
+                                <div class="price-range">
+                                    <span class="price-min">¥10</span>
+                                    <div class="price-bar-guide">
+                                        <div class="price-fill xlarge-fill"></div>
+                                    </div>
+                                    <span class="price-max">¥20+</span>
+                                </div>
+                            </div>
+
+                            <div class="guide-section tips-section">
+                                <h4><i class="fas fa-lightbulb"></i> 取件注意事项</h4>
+                                <ul class="tips-list">
+                                    <li><i class="fas fa-check-circle"></i> 需要2人以上协作搬运</li>
+                                    <li><i class="fas fa-check-circle"></i> 请务必使用手推车或搬运工具</li>
+                                    <li><i class="fas fa-check-circle"></i> 提前确认配送路线是否有电梯</li>
+                                    <li><i class="fas fa-check-circle"></i> 贵重家电建议保价运输</li>
+                                    <li><i class="fas fa-check-circle"></i> 需预约驿站大件取件通道</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="guide-card-footer">
+                            <button class="guide-post-btn" onclick="postWithSize('xlarge')">
+                                <i class="fas fa-paper-plane"></i> 发布超大件悬赏
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="guide-bottom-cta">
+                    <div class="cta-content">
+                        <h3>还在等什么？立即发布你的悬赏任务</h3>
+                        <p>选择合适的包裹尺寸，让跑腿员更快接单</p>
+                    </div>
+                    <button class="cta-btn" onclick="postWithSize('medium')">
+                        <i class="fas fa-plus-circle"></i> 去发布悬赏
+                    </button>
                 </div>
             </section>
         </main>
