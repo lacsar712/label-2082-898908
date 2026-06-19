@@ -248,6 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tab === 'cert-audit') loadAuditList();
             if (tab === 'blacklist') loadBlacklist();
             if (tab === 'price-calc') loadPriceCalculator();
+            if (tab === 'route-plan') loadRoutePlan();
         };
     });
 
@@ -332,8 +333,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${isMyOrders && myOrdersView === 'created' && order.status === 'pending' ?
                     `<button class="btn-outline" style="color: #ef4444;" onclick="updateStatus(${order.id}, 'cancelled')"><i class="fas fa-undo"></i> 撤回发布</button>` : ''}
                 </div>
-                ${order.creator !== currentUser.username || (order.worker && order.worker !== currentUser.username) ? `
                 <div class="card-actions">
+                    <button class="block-action-btn view-route-btn" 
+                            data-pickup="${order.pickup}" 
+                            data-delivery="${order.delivery}"
+                            data-package="${order.package}"
+                            data-status="${order.status}">
+                        <i class="fas fa-route"></i> 查看路线
+                    </button>
                     ${order.creator !== currentUser.username ? `
                     <button class="block-action-btn ${userBlacklistCache[order.creator] ? 'blocked' : ''}" 
                             onclick="toggleBlacklist('${order.creator}', this)">
@@ -346,8 +353,22 @@ document.addEventListener('DOMContentLoaded', () => {
                         <i class="fas ${userBlacklistCache[order.worker] ? 'fa-check' : 'fa-ban'}"></i>
                         ${userBlacklistCache[order.worker] ? '已拉黑接单人' : '拉黑接单人'}
                     </button>` : ''}
-                </div>` : ''}
+                </div>
             `;
+
+            const routeBtn = card.querySelector('.view-route-btn');
+            if (routeBtn) {
+                routeBtn.onclick = () => {
+                    const orderData = {
+                        pickup: order.pickup,
+                        delivery: order.delivery,
+                        package: order.package,
+                        status: order.status
+                    };
+                    openRouteFromOrder(orderData);
+                };
+            }
+
             container.appendChild(card);
         });
     }
@@ -1351,6 +1372,463 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelector('[data-tab="post-task"]').click();
             showToast('已带入发布表单，请确认后发布');
         };
+    }
+
+    // --- Route Planning ---
+    const ROUTE_NODES = {
+        '菜鸟驿站-南门': { x: 300, y: 370, type: 'station', label: '菜鸟驿站' },
+        '顺丰速运-西门': { x: 60, y: 210, type: 'station', label: '顺丰速运' },
+        '京东派-北区': { x: 280, y: 40, type: 'station', label: '京东派' },
+        '中通圆通-东门': { x: 540, y: 210, type: 'station', label: '中通圆通' },
+
+        '南门广场': { x: 300, y: 330, type: 'landmark', label: '南门广场', icon: 'fa-square' },
+        '图书馆': { x: 300, y: 210, type: 'landmark', label: '图书馆', icon: 'fa-book' },
+        '一食堂': { x: 170, y: 270, type: 'landmark', label: '第一食堂', icon: 'fa-utensils' },
+        '二食堂': { x: 430, y: 270, type: 'landmark', label: '第二食堂', icon: 'fa-utensils' },
+        '教学楼A': { x: 160, y: 150, type: 'landmark', label: '教学楼A', icon: 'fa-school' },
+        '教学楼B': { x: 440, y: 150, type: 'landmark', label: '教学楼B', icon: 'fa-school' },
+        '体育馆': { x: 90, y: 90, type: 'landmark', label: '体育馆', icon: 'fa-dumbbell' },
+        '实验楼': { x: 510, y: 90, type: 'landmark', label: '实验楼', icon: 'fa-flask' },
+        '北区广场': { x: 290, y: 80, type: 'landmark', label: '北区广场', icon: 'fa-tree' },
+        '行政楼': { x: 300, y: 290, type: 'landmark', label: '行政楼', icon: 'fa-building' },
+        '中心花园': { x: 240, y: 200, type: 'landmark', label: '中心花园', icon: 'fa-seedling' },
+
+        '1号楼': { x: 200, y: 60, type: 'dorm', label: '1号楼' },
+        '2号楼': { x: 230, y: 55, type: 'dorm', label: '2号楼' },
+        '3号楼': { x: 260, y: 50, type: 'dorm', label: '3号楼' },
+        '4号楼': { x: 320, y: 50, type: 'dorm', label: '4号楼' },
+        '5号楼': { x: 350, y: 55, type: 'dorm', label: '5号楼' },
+        '6号楼': { x: 380, y: 60, type: 'dorm', label: '6号楼' },
+        '7号楼': { x: 150, y: 120, type: 'dorm', label: '7号楼' },
+        '8号楼': { x: 120, y: 140, type: 'dorm', label: '8号楼' },
+        '9号楼': { x: 450, y: 120, type: 'dorm', label: '9号楼' },
+        '10号楼': { x: 480, y: 140, type: 'dorm', label: '10号楼' },
+        '11号楼': { x: 200, y: 30, type: 'dorm', label: '11号楼' },
+        '12号楼': { x: 400, y: 30, type: 'dorm', label: '12号楼' },
+        '13号楼': { x: 410, y: 100, type: 'dorm', label: '13号楼' },
+        '14号楼': { x: 190, y: 100, type: 'dorm', label: '14号楼' },
+        '15号楼': { x: 350, y: 110, type: 'dorm', label: '15号楼' }
+    };
+
+    const ROUTE_EDGES = [
+        { from: '菜鸟驿站-南门', to: '南门广场', distance: 80, stairs: 0 },
+        { from: '南门广场', to: '行政楼', distance: 70, stairs: 0 },
+        { from: '行政楼', to: '图书馆', distance: 120, stairs: 0 },
+        { from: '南门广场', to: '二食堂', distance: 150, stairs: 0 },
+        { from: '南门广场', to: '一食堂', distance: 150, stairs: 0 },
+
+        { from: '顺丰速运-西门', to: '一食堂', distance: 120, stairs: 20 },
+        { from: '一食堂', to: '中心花园', distance: 80, stairs: 0 },
+        { from: '中心花园', to: '图书馆', distance: 70, stairs: 0 },
+        { from: '中心花园', to: '教学楼A', distance: 100, stairs: 0 },
+        { from: '一食堂', to: '教学楼A', distance: 130, stairs: 30 },
+        { from: '教学楼A', to: '体育馆', distance: 90, stairs: 0 },
+        { from: '体育馆', to: '14号楼', distance: 50, stairs: 0 },
+        { from: '14号楼', to: '7号楼', distance: 40, stairs: 0 },
+        { from: '7号楼', to: '8号楼', distance: 35, stairs: 0 },
+        { from: '14号楼', to: '1号楼', distance: 60, stairs: 0 },
+        { from: '1号楼', to: '2号楼', distance: 35, stairs: 0 },
+        { from: '2号楼', to: '3号楼', distance: 35, stairs: 0 },
+        { from: '3号楼', to: '北区广场', distance: 40, stairs: 0 },
+        { from: '3号楼', to: '11号楼', distance: 70, stairs: 0 },
+
+        { from: '中通圆通-东门', to: '二食堂', distance: 120, stairs: 20 },
+        { from: '二食堂', to: '图书馆', distance: 100, stairs: 0 },
+        { from: '二食堂', to: '教学楼B', distance: 130, stairs: 30 },
+        { from: '图书馆', to: '教学楼B', distance: 100, stairs: 0 },
+        { from: '教学楼B', to: '实验楼', distance: 90, stairs: 0 },
+        { from: '实验楼', to: '9号楼', distance: 40, stairs: 0 },
+        { from: '9号楼', to: '10号楼', distance: 40, stairs: 0 },
+        { from: '9号楼', to: '13号楼', distance: 45, stairs: 0 },
+        { from: '13号楼', to: '6号楼', distance: 50, stairs: 0 },
+        { from: '6号楼', to: '5号楼', distance: 35, stairs: 0 },
+        { from: '5号楼', to: '4号楼', distance: 35, stairs: 0 },
+        { from: '4号楼', to: '北区广场', distance: 50, stairs: 0 },
+        { from: '5号楼', to: '12号楼', distance: 60, stairs: 0 },
+
+        { from: '京东派-北区', to: '北区广场', distance: 50, stairs: 0 },
+        { from: '北区广场', to: '15号楼', distance: 40, stairs: 0 },
+        { from: '15号楼', to: '13号楼', distance: 70, stairs: 0 },
+        { from: '15号楼', to: '教学楼B', distance: 80, stairs: 15 },
+        { from: '北区广场', to: '教学楼A', distance: 100, stairs: 15 },
+
+        { from: '教学楼A', to: '教学楼B', distance: 180, stairs: 0 },
+        { from: '图书馆', to: '15号楼', distance: 120, stairs: 0 }
+    ];
+
+    function buildAdjacencyList() {
+        const adj = {};
+        for (const node of Object.keys(ROUTE_NODES)) {
+            adj[node] = [];
+        }
+        for (const edge of ROUTE_EDGES) {
+            adj[edge.from].push({ to: edge.to, distance: edge.distance, stairs: edge.stairs });
+            adj[edge.to].push({ to: edge.from, distance: edge.distance, stairs: edge.stairs });
+        }
+        return adj;
+    }
+
+    function dijkstra(start, end, weightType = 'distance') {
+        const adj = buildAdjacencyList();
+        const distances = {};
+        const prev = {};
+        const visited = new Set();
+
+        for (const node of Object.keys(ROUTE_NODES)) {
+            distances[node] = Infinity;
+            prev[node] = null;
+        }
+        distances[start] = 0;
+
+        const queue = [{ node: start, dist: 0 }];
+
+        while (queue.length > 0) {
+            queue.sort((a, b) => a.dist - b.dist);
+            const { node: current } = queue.shift();
+
+            if (visited.has(current)) continue;
+            visited.add(current);
+
+            if (current === end) break;
+
+            for (const neighbor of adj[current]) {
+                const weight = weightType === 'distance' ? neighbor.distance : (neighbor.stairs * 10 + neighbor.distance * 0.5);
+                const alt = distances[current] + weight;
+
+                if (alt < distances[neighbor.to]) {
+                    distances[neighbor.to] = alt;
+                    prev[neighbor.to] = { node: current, distance: neighbor.distance, stairs: neighbor.stairs };
+                    queue.push({ node: neighbor.to, dist: alt });
+                }
+            }
+        }
+
+        const path = [];
+        let totalDistance = 0;
+        let totalStairs = 0;
+        let current = end;
+
+        while (current !== null && prev[current] !== undefined) {
+            path.unshift(current);
+            if (prev[current]) {
+                totalDistance += prev[current].distance;
+                totalStairs += prev[current].stairs;
+            }
+            current = prev[current] ? prev[current].node : null;
+        }
+
+        if (path.length > 0) {
+            path.unshift(start);
+        }
+
+        return { path, distance: totalDistance, stairs: totalStairs };
+    }
+
+    let currentRouteType = 'fastest';
+    let currentRouteOrder = null;
+
+    const routeElements = {
+        pickup: document.getElementById('route-pickup'),
+        delivery: document.getElementById('route-delivery'),
+        distance: document.getElementById('route-distance'),
+        time: document.getElementById('route-time'),
+        stairs: document.getElementById('route-stairs'),
+        map: document.getElementById('route-map'),
+        bgPaths: document.getElementById('route-bg-paths'),
+        landmarks: document.getElementById('route-landmarks'),
+        activePath: document.getElementById('route-active-path'),
+        points: document.getElementById('route-points'),
+        sections: document.getElementById('route-sections'),
+        orderBadge: document.getElementById('route-order-badge'),
+        orderName: document.getElementById('route-order-name'),
+        orderStatus: document.getElementById('route-order-status')
+    };
+
+    function initRouteMap() {
+        drawBackgroundPaths();
+        drawLandmarks();
+        updateRoute();
+    }
+
+    function drawBackgroundPaths() {
+        const svgNs = 'http://www.w3.org/2000/svg';
+        routeElements.bgPaths.innerHTML = '';
+
+        for (const edge of ROUTE_EDGES) {
+            const from = ROUTE_NODES[edge.from];
+            const to = ROUTE_NODES[edge.to];
+            if (!from || !to) continue;
+
+            const line = document.createElementNS(svgNs, 'line');
+            line.setAttribute('x1', from.x);
+            line.setAttribute('y1', from.y);
+            line.setAttribute('x2', to.x);
+            line.setAttribute('y2', to.y);
+            line.setAttribute('class', 'route-bg-path');
+            routeElements.bgPaths.appendChild(line);
+        }
+    }
+
+    function drawLandmarks() {
+        const svgNs = 'http://www.w3.org/2000/svg';
+        routeElements.landmarks.innerHTML = '';
+
+        for (const [name, node] of Object.entries(ROUTE_NODES)) {
+            if (node.type !== 'landmark') continue;
+
+            const circle = document.createElementNS(svgNs, 'circle');
+            circle.setAttribute('cx', node.x);
+            circle.setAttribute('cy', node.y);
+            circle.setAttribute('r', 5);
+            circle.setAttribute('class', 'route-landmark-circle');
+            routeElements.landmarks.appendChild(circle);
+
+            const text = document.createElementNS(svgNs, 'text');
+            text.setAttribute('x', node.x);
+            text.setAttribute('y', node.y - 10);
+            text.setAttribute('class', 'route-landmark-label');
+            text.textContent = node.label;
+            routeElements.landmarks.appendChild(text);
+        }
+    }
+
+    function drawActiveRoute(path) {
+        const svgNs = 'http://www.w3.org/2000/svg';
+        routeElements.activePath.innerHTML = '';
+        routeElements.points.innerHTML = '';
+
+        if (path.length < 2) return;
+
+        let pathD = '';
+        path.forEach((nodeName, idx) => {
+            const node = ROUTE_NODES[nodeName];
+            if (!node) return;
+            if (idx === 0) {
+                pathD += `M ${node.x} ${node.y}`;
+            } else {
+                pathD += ` L ${node.x} ${node.y}`;
+            }
+        });
+
+        const pathEl = document.createElementNS(svgNs, 'path');
+        pathEl.setAttribute('d', pathD);
+        pathEl.setAttribute('class', 'route-active-path');
+        pathEl.style.animation = 'none';
+        routeElements.activePath.appendChild(pathEl);
+
+        pathEl.getBoundingClientRect();
+        pathEl.style.animation = '';
+
+        path.forEach((nodeName, idx) => {
+            const node = ROUTE_NODES[nodeName];
+            if (!node) return;
+
+            const isStart = idx === 0;
+            const isEnd = idx === path.length - 1;
+            const isLandmark = node.type === 'landmark';
+
+            if (isStart || isEnd || isLandmark) {
+                const circle = document.createElementNS(svgNs, 'circle');
+                circle.setAttribute('cx', node.x);
+                circle.setAttribute('cy', node.y);
+                circle.setAttribute('r', isStart || isEnd ? 9 : 6);
+
+                if (isStart) {
+                    circle.setAttribute('class', 'route-point-start pulse-animation');
+                } else if (isEnd) {
+                    circle.setAttribute('class', 'route-point-end pulse-animation');
+                } else {
+                    circle.setAttribute('class', 'route-point-landmark');
+                }
+
+                routeElements.points.appendChild(circle);
+
+                const label = document.createElementNS(svgNs, 'text');
+                label.setAttribute('x', node.x);
+                label.setAttribute('y', isStart ? node.y + 24 : (isEnd ? node.y - 16 : node.y - 12));
+                label.setAttribute('class', `route-point-label ${isStart ? 'start' : ''} ${isEnd ? 'end' : ''}`);
+                label.textContent = node.label;
+                routeElements.points.appendChild(label);
+            }
+        });
+    }
+
+    function renderRouteSections(path, result) {
+        if (path.length < 2) {
+            routeElements.sections.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 30px;">选择起点和终点查看路线详情</div>';
+            return;
+        }
+
+        let html = '';
+        let cumulativeDist = 0;
+        let cumulativeTime = 0;
+
+        const adj = buildAdjacencyList();
+        const edgeMap = {};
+        for (const edge of ROUTE_EDGES) {
+            edgeMap[`${edge.from}-${edge.to}`] = edge;
+            edgeMap[`${edge.to}-${edge.from}`] = edge;
+        }
+
+        for (let i = 0; i < path.length; i++) {
+            const nodeName = path[i];
+            const node = ROUTE_NODES[nodeName];
+            const isStart = i === 0;
+            const isEnd = i === path.length - 1;
+            const hasStairs = i > 0 && edgeMap[`${path[i - 1]}-${path[i]}`]?.stairs > 0;
+            const edge = i > 0 ? edgeMap[`${path[i - 1]}-${path[i]}`] : null;
+
+            if (edge) {
+                cumulativeDist += edge.distance;
+                cumulativeTime += Math.ceil(edge.distance / 80);
+            }
+
+            let itemClass = '';
+            let icon = 'fa-map-marker-alt';
+            let title = node.label;
+            let desc = '';
+
+            if (isStart) {
+                itemClass = 'start';
+                icon = 'fa-store';
+                title = `${node.label}（起点）`;
+                desc = '从取件驿站出发，开始配送';
+            } else if (isEnd) {
+                itemClass = 'end';
+                icon = 'fa-home';
+                title = `${node.label}（终点）`;
+                desc = '到达目的地，配送完成';
+            } else if (hasStairs) {
+                itemClass = 'stairs';
+                icon = 'fa-stairs';
+                title = `途经 ${node.label}`;
+                desc = `经过 ${edge.stairs} 级台阶，请注意慢行`;
+            } else {
+                icon = node.icon || 'fa-map-pin';
+                title = `途经 ${node.label}`;
+                desc = '沿主路直行';
+            }
+
+            const sectionDist = edge ? edge.distance : 0;
+            const sectionTime = edge ? Math.ceil(edge.distance / 80) : 0;
+
+            html += `
+                <div class="route-section-item ${itemClass}">
+                    <div class="route-section-icon">
+                        <i class="fas ${icon}"></i>
+                    </div>
+                    <div class="route-section-content">
+                        <div class="route-section-title">${title}</div>
+                        <div class="route-section-desc">${desc}</div>
+                        ${!isStart ? `
+                        <div class="route-section-meta">
+                            <span><i class="fas fa-walking"></i> 本段约 ${sectionDist}米</span>
+                            <span><i class="fas fa-clock"></i> 约 ${sectionTime}分钟</span>
+                            ${hasStairs ? `<span><i class="fas fa-stairs"></i> ${edge.stairs}级台阶</span>` : ''}
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        html += `
+            <div class="route-section-item end" style="border-top: 1px dashed #e2e8f0; padding-top: 20px; margin-top: 10px;">
+                <div class="route-section-icon" style="background: linear-gradient(135deg, var(--primary), #8b5cf6); color: white;">
+                    <i class="fas fa-flag-checkered"></i>
+                </div>
+                <div class="route-section-content">
+                    <div class="route-section-title">全程总结</div>
+                    <div class="route-section-desc">共经过 ${path.length - 1} 个路段</div>
+                    <div class="route-section-meta">
+                        <span><i class="fas fa-walking"></i> 总距离 ${result.distance}米</span>
+                        <span><i class="fas fa-clock"></i> 总时间 ${Math.ceil(result.distance / 80)}分钟</span>
+                        <span><i class="fas fa-stairs"></i> 台阶 ${result.stairs}级</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        routeElements.sections.innerHTML = html;
+    }
+
+    function updateRoute() {
+        const pickup = routeElements.pickup?.value;
+        const delivery = routeElements.delivery?.value;
+
+        if (!pickup || !delivery) return;
+
+        const weightType = currentRouteType === 'fastest' ? 'distance' : 'stairs';
+        const result = dijkstra(pickup, delivery, weightType);
+
+        const distance = result.distance;
+        const timeMinutes = Math.ceil(distance / 80);
+
+        routeElements.distance.textContent = `${distance}米`;
+        routeElements.time.textContent = `${timeMinutes}分钟`;
+        routeElements.stairs.textContent = `${result.stairs}级`;
+
+        drawActiveRoute(result.path);
+        renderRouteSections(result.path, result);
+    }
+
+    document.querySelectorAll('.route-tab-btn').forEach(btn => {
+        btn.onclick = () => {
+            document.querySelectorAll('.route-tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentRouteType = btn.dataset.routeType;
+            updateRoute();
+        };
+    });
+
+    if (routeElements.pickup) {
+        routeElements.pickup.onchange = () => {
+            currentRouteOrder = null;
+            if (routeElements.orderBadge) {
+                routeElements.orderBadge.style.display = 'none';
+            }
+            updateRoute();
+        };
+        routeElements.delivery.onchange = () => {
+            currentRouteOrder = null;
+            if (routeElements.orderBadge) {
+                routeElements.orderBadge.style.display = 'none';
+            }
+            updateRoute();
+        };
+    }
+
+    window.openRouteFromOrder = (order) => {
+        if (!order) return;
+
+        currentRouteOrder = order;
+
+        const navItem = document.querySelector('[data-tab="route-plan"]');
+        if (navItem) navItem.click();
+    };
+
+    function loadRoutePlan() {
+        if (!routeElements.pickup || !routeElements.delivery) return;
+
+        if (currentRouteOrder) {
+            routeElements.pickup.value = currentRouteOrder.pickup;
+            routeElements.delivery.value = currentRouteOrder.delivery;
+
+            if (routeElements.orderBadge) {
+                routeElements.orderBadge.style.display = 'flex';
+                routeElements.orderName.textContent = currentRouteOrder.package;
+
+                const statusMap = { 'pending': '待接单', 'accepted': '进行中', 'delivered': '待收货', 'completed': '已完成', 'cancelled': '已撤回' };
+                routeElements.orderStatus.textContent = statusMap[currentRouteOrder.status] || currentRouteOrder.status;
+                routeElements.orderStatus.className = `badge ${currentRouteOrder.status}`;
+            }
+        } else {
+            if (routeElements.orderBadge) {
+                routeElements.orderBadge.style.display = 'none';
+            }
+        }
+
+        initRouteMap();
     }
 
     // Init

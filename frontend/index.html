@@ -69,6 +69,7 @@
             <nav class="nav-menu">
                 <a href="#" class="nav-item active" data-tab="dashboard"><i class="fas fa-th-large"></i> 任务大厅</a>
                 <a href="#" class="nav-item" data-tab="my-orders"><i class="fas fa-clipboard-list"></i> 我的订单</a>
+                <a href="#" class="nav-item" data-tab="route-plan"><i class="fas fa-route"></i> 路线规划</a>
                 <a href="#" class="nav-item" data-tab="price-calc"><i class="fas fa-calculator"></i> 报价计算器</a>
                 <a href="#" class="nav-item" data-tab="post-task"><i class="fas fa-plus-circle"></i> 发布悬赏</a>
                 <a href="#" class="nav-item" data-tab="cert-apply" id="nav-cert-apply"><i class="fas fa-id-card"></i> 跑腿认证</a>
@@ -131,6 +132,122 @@
                     </div>
                 </div>
                 <div class="order-grid" id="my-orders-list"></div>
+            </section>
+
+            <!-- Route Planning -->
+            <section class="view-section hidden" id="route-plan-tab">
+                <div class="section-header">
+                    <h2><i class="fas fa-route"></i> 配送路线规划</h2>
+                    <div id="route-order-badge" class="route-order-badge" style="display:none;">
+                        <i class="fas fa-box"></i> <span id="route-order-name"></span>
+                        <span class="badge" id="route-order-status"></span>
+                    </div>
+                </div>
+
+                <div class="route-container">
+                    <div class="route-controls">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>取件驿站</label>
+                                <select id="route-pickup">
+                                    <option value="菜鸟驿站-南门">菜鸟驿站-南门</option>
+                                    <option value="顺丰速运-西门">顺丰速运-西门</option>
+                                    <option value="京东派-北区">京东派-北区</option>
+                                    <option value="中通圆通-东门">中通圆通-东门</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>送达宿舍楼栋</label>
+                                <select id="route-delivery">
+                                    <option value="1号楼">1号楼</option>
+                                    <option value="2号楼">2号楼</option>
+                                    <option value="3号楼">3号楼</option>
+                                    <option value="4号楼">4号楼</option>
+                                    <option value="5号楼">5号楼</option>
+                                    <option value="6号楼">6号楼</option>
+                                    <option value="7号楼">7号楼</option>
+                                    <option value="8号楼">8号楼</option>
+                                    <option value="9号楼">9号楼</option>
+                                    <option value="10号楼">10号楼</option>
+                                    <option value="11号楼">11号楼</option>
+                                    <option value="12号楼">12号楼</option>
+                                    <option value="13号楼">13号楼</option>
+                                    <option value="14号楼">14号楼</option>
+                                    <option value="15号楼">15号楼</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="route-toggle">
+                            <button class="route-tab-btn active" data-route-type="fastest">
+                                <i class="fas fa-bolt"></i> 最快路线
+                            </button>
+                            <button class="route-tab-btn" data-route-type="less-stairs">
+                                <i class="fas fa-walking"></i> 少台阶路线
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="route-visual-card">
+                        <div class="route-stats">
+                            <div class="route-stat">
+                                <i class="fas fa-walking" style="color: var(--primary);"></i>
+                                <div>
+                                    <span class="route-stat-label">步行距离</span>
+                                    <span class="route-stat-value" id="route-distance">-</span>
+                                </div>
+                            </div>
+                            <div class="route-stat">
+                                <i class="fas fa-clock" style="color: var(--accent);"></i>
+                                <div>
+                                    <span class="route-stat-label">预估时间</span>
+                                    <span class="route-stat-value" id="route-time">-</span>
+                                </div>
+                            </div>
+                            <div class="route-stat">
+                                <i class="fas fa-stairs" style="color: #8b5cf6;"></i>
+                                <div>
+                                    <span class="route-stat-label">台阶数量</span>
+                                    <span class="route-stat-value" id="route-stairs">-</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="route-map-container">
+                            <svg id="route-map" class="route-map" viewBox="0 0 600 400">
+                                <defs>
+                                    <linearGradient id="routeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+                                        <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+                                    </linearGradient>
+                                    <filter id="glow">
+                                        <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                                        <feMerge>
+                                            <feMergeNode in="coloredBlur"/>
+                                            <feMergeNode in="SourceGraphic"/>
+                                        </feMerge>
+                                    </filter>
+                                </defs>
+                                <g id="route-bg-paths"></g>
+                                <g id="route-landmarks"></g>
+                                <g id="route-active-path"></g>
+                                <g id="route-points"></g>
+                            </svg>
+                            <div class="route-legend">
+                                <span class="legend-item"><span class="legend-dot start"></span> 起点</span>
+                                <span class="legend-item"><span class="legend-dot landmark"></span> 途经地标</span>
+                                <span class="legend-item"><span class="legend-dot end"></span> 终点</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="route-sections-card">
+                        <h3><i class="fas fa-list-ol" style="color: var(--primary);"></i> 分段说明</h3>
+                        <div class="route-sections" id="route-sections">
+                            <div style="text-align: center; color: #94a3b8; padding: 30px;">选择起点和终点查看路线详情</div>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <!-- Price Calculator -->

@@ -1494,6 +1494,352 @@ select {
     border-color: #bfdbfe;
 }
 
+/* Route Planning */
+.route-container {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+}
+
+.route-order-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 18px;
+    background: linear-gradient(135deg, #eef2ff, #faf5ff);
+    border-radius: 30px;
+    font-weight: 600;
+    color: var(--primary);
+}
+
+.route-order-badge i {
+    color: var(--primary);
+}
+
+.route-controls {
+    background: white;
+    padding: 25px;
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+}
+
+.route-toggle {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+    background: #f1f5f9;
+    padding: 6px;
+    border-radius: 14px;
+    width: fit-content;
+}
+
+.route-tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 24px;
+    border: none;
+    background: none;
+    border-radius: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: 0.3s;
+    font-size: 0.9rem;
+}
+
+.route-tab-btn.active {
+    background: white;
+    color: var(--primary);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.route-tab-btn:hover:not(.active) {
+    color: var(--text-main);
+}
+
+.route-visual-card {
+    background: white;
+    border-radius: 20px;
+    padding: 25px;
+    box-shadow: var(--shadow);
+}
+
+.route-stats {
+    display: flex;
+    gap: 30px;
+    margin-bottom: 20px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.route-stat {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.route-stat i {
+    font-size: 1.5rem;
+}
+
+.route-stat-label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+}
+
+.route-stat-value {
+    display: block;
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: var(--text-main);
+}
+
+.route-map-container {
+    position: relative;
+    background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+.route-map {
+    width: 100%;
+    height: 350px;
+    display: block;
+}
+
+.route-bg-path {
+    stroke: #e2e8f0;
+    stroke-width: 4;
+    fill: none;
+    stroke-linecap: round;
+}
+
+.route-landmark-circle {
+    fill: white;
+    stroke: #cbd5e1;
+    stroke-width: 2;
+}
+
+.route-landmark-label {
+    font-size: 11px;
+    fill: var(--text-muted);
+    font-weight: 600;
+    text-anchor: middle;
+}
+
+.route-active-path {
+    stroke: url(#routeGradient);
+    stroke-width: 6;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: url(#glow);
+    stroke-dasharray: 1000;
+    stroke-dashoffset: 1000;
+    animation: drawRoute 1.5s ease-out forwards;
+}
+
+@keyframes drawRoute {
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+
+.route-point-start {
+    fill: #10b981;
+    stroke: white;
+    stroke-width: 3;
+    filter: drop-shadow(0 2px 4px rgba(16, 185, 129, 0.4));
+}
+
+.route-point-end {
+    fill: #ef4444;
+    stroke: white;
+    stroke-width: 3;
+    filter: drop-shadow(0 2px 4px rgba(239, 68, 68, 0.4));
+}
+
+.route-point-landmark {
+    fill: var(--primary);
+    stroke: white;
+    stroke-width: 2;
+    filter: drop-shadow(0 2px 4px rgba(99, 102, 241, 0.3));
+}
+
+.route-point-label {
+    font-size: 12px;
+    font-weight: 700;
+    fill: var(--text-main);
+    text-anchor: middle;
+}
+
+.route-point-label.start {
+    fill: #10b981;
+}
+
+.route-point-label.end {
+    fill: #ef4444;
+}
+
+.route-legend {
+    position: absolute;
+    bottom: 15px;
+    right: 15px;
+    background: white;
+    padding: 10px 16px;
+    border-radius: 10px;
+    display: flex;
+    gap: 16px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.legend-dot.start {
+    background: #10b981;
+}
+
+.legend-dot.landmark {
+    background: var(--primary);
+}
+
+.legend-dot.end {
+    background: #ef4444;
+}
+
+.route-sections-card {
+    background: white;
+    border-radius: 20px;
+    padding: 25px;
+    box-shadow: var(--shadow);
+}
+
+.route-sections-card h3 {
+    font-size: 1.1rem;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.route-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.route-section-item {
+    display: flex;
+    gap: 16px;
+    padding: 16px 0;
+    position: relative;
+}
+
+.route-section-item:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 19px;
+    top: 44px;
+    bottom: -4px;
+    width: 2px;
+    background: #e2e8f0;
+}
+
+.route-section-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: #eef2ff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--primary);
+    font-size: 1rem;
+}
+
+.route-section-item.start .route-section-icon {
+    background: #ecfdf5;
+    color: #10b981;
+}
+
+.route-section-item.end .route-section-icon {
+    background: #fef2f2;
+    color: #ef4444;
+}
+
+.route-section-item.stairs .route-section-icon {
+    background: #faf5ff;
+    color: #8b5cf6;
+}
+
+.route-section-content {
+    flex: 1;
+}
+
+.route-section-title {
+    font-weight: 700;
+    font-size: 0.95rem;
+    margin-bottom: 4px;
+    color: var(--text-main);
+}
+
+.route-section-desc {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.route-section-meta {
+    display: flex;
+    gap: 16px;
+    margin-top: 8px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.route-section-meta span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.route-section-meta i {
+    color: var(--primary);
+}
+
+.pulse-animation {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.7;
+        transform: scale(1.15);
+    }
+}
+
 @media (max-width: 900px) {
     .sidebar {
         width: 80px;
@@ -1518,5 +1864,19 @@ select {
     .calc-result-main {
         flex-direction: column;
         gap: 15px;
+    }
+
+    .route-stats {
+        flex-wrap: wrap;
+        gap: 20px;
+    }
+
+    .route-toggle {
+        width: 100%;
+    }
+
+    .route-tab-btn {
+        flex: 1;
+        justify-content: center;
     }
 }
