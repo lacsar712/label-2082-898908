@@ -92,6 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
         buildingSelectDorm: document.getElementById('building-select-dorm'),
 
         eventBannerContainer: document.getElementById('event-banner-container'),
+        weatherCardContainer: document.getElementById('weather-card-container'),
         navEventCalendar: document.getElementById('nav-event-calendar'),
         navEventManage: document.getElementById('nav-event-manage'),
         navNotifications: document.getElementById('nav-notifications'),
@@ -199,6 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
             refreshUserInfo();
             loadBlacklistCache();
             loadEventBanners();
+            loadWeatherCard();
 
             // Go to dashboard by default to clear any previous account's tab state
             document.querySelector('[data-tab="dashboard"]').click();
@@ -302,7 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.viewSections.forEach(v => v.classList.add('hidden'));
             document.getElementById(`${tab}-tab`).classList.remove('hidden');
 
-            if (tab === 'dashboard') { fetchOrders(); loadEventBanners(); }
+            if (tab === 'dashboard') { fetchOrders(); loadEventBanners(); loadWeatherCard(); }
             if (tab === 'my-orders') fetchMyOrders();
             if (tab === 'profile') loadProfile();
             if (tab === 'cert-apply') loadCertApplyForm();
@@ -2603,6 +2605,320 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast('操作失败');
             }
         };
+    }
+
+    // --- Weather Card (Dashboard) ---
+    const WEATHER_TYPES = {
+        sunny: { label: '晴', icon: 'fa-sun', iconClass: 'sunny' },
+        partlyCloudy: { label: '多云', icon: 'fa-cloud-sun', iconClass: 'cloudy' },
+        cloudy: { label: '阴', icon: 'fa-cloud', iconClass: 'cloudy' },
+        lightRain: { label: '小雨', icon: 'fa-cloud-rain', iconClass: 'rainy' },
+        heavyRain: { label: '大雨', icon: 'fa-cloud-showers-heavy', iconClass: 'rainy' },
+        thunderstorm: { label: '雷阵雨', icon: 'fa-cloud-bolt', iconClass: 'rainy' },
+        snow: { label: '小雪', icon: 'fa-snowflake', iconClass: 'snowy' },
+        heavySnow: { label: '大雪', icon: 'fa-snowflake', iconClass: 'snowy' },
+        windy: { label: '大风', icon: 'fa-wind', iconClass: 'windy' },
+        hot: { label: '高温', icon: 'fa-sun', iconClass: 'hot' },
+        cold: { label: '寒冷', icon: 'fa-temperature-arrow-down', iconClass: 'snowy' },
+        fog: { label: '雾霾', icon: 'fa-smog', iconClass: 'foggy' }
+    };
+
+    let weatherCollapsed = localStorage.getItem('weatherCollapsed') === 'true';
+
+    function generateMockWeather() {
+        const now = new Date();
+        const month = now.getMonth() + 1;
+        const hour = now.getHours();
+
+        let possibleTypes;
+        if (month >= 6 && month <= 8) {
+            possibleTypes = ['sunny', 'partlyCloudy', 'cloudy', 'thunderstorm', 'lightRain', 'heavyRain', 'hot', 'fog', 'windy'];
+        } else if (month === 12 || month <= 2) {
+            possibleTypes = ['sunny', 'partlyCloudy', 'cloudy', 'cold', 'snow', 'heavySnow', 'fog', 'windy'];
+        } else {
+            possibleTypes = ['sunny', 'partlyCloudy', 'cloudy', 'lightRain', 'heavyRain', 'fog', 'windy'];
+        }
+
+        const typeKey = possibleTypes[Math.floor(Math.random() * possibleTypes.length)];
+        const type = WEATHER_TYPES[typeKey];
+
+        let temp;
+        if (typeKey === 'hot') {
+            temp = Math.floor(Math.random() * 6) + 33;
+        } else if (typeKey === 'cold' || typeKey === 'snow' || typeKey === 'heavySnow') {
+            temp = Math.floor(Math.random() * 8) - 3;
+        } else if (month >= 6 && month <= 8) {
+            temp = Math.floor(Math.random() * 12) + 24;
+        } else if (month === 12 || month <= 2) {
+            temp = Math.floor(Math.random() * 12) + 0;
+        } else {
+            temp = Math.floor(Math.random() * 15) + 12;
+        }
+
+        let humidity;
+        if (['lightRain', 'heavyRain', 'thunderstorm'].includes(typeKey)) {
+            humidity = Math.floor(Math.random() * 15) + 75;
+        } else if (typeKey === 'hot' || typeKey === 'sunny') {
+            humidity = Math.floor(Math.random() * 20) + 30;
+        } else if (typeKey === 'fog') {
+            humidity = Math.floor(Math.random() * 10) + 85;
+        } else {
+            humidity = Math.floor(Math.random() * 30) + 45;
+        }
+
+        let windLevel, windLabel;
+        if (typeKey === 'windy' || typeKey === 'thunderstorm' || typeKey === 'heavyRain' || typeKey === 'heavySnow') {
+            windLevel = Math.floor(Math.random() * 3) + 5;
+            windLabel = ['5级', '6级', '7级'][windLevel - 5];
+        } else {
+            windLevel = Math.floor(Math.random() * 4) + 1;
+            windLabel = ['1级', '2级', '3级', '4级'][windLevel - 1];
+        }
+
+        const windDirections = ['东北风', '东风', '东南风', '南风', '西南风', '西风', '西北风', '北风'];
+        const windDir = windDirections[Math.floor(Math.random() * windDirections.length)];
+
+        return {
+            typeKey,
+            typeLabel: type.label,
+            icon: type.icon,
+            iconClass: type.iconClass,
+            temperature: temp,
+            humidity,
+            windLevel,
+            windLabel: `${windDir} ${windLabel}`
+        };
+    }
+
+    function generateWeatherSuggestions(weather) {
+        const suggestions = [];
+
+        suggestions.push({
+            level: 'info',
+            icon: 'fa-sun',
+            title: '今日天气速览',
+            desc: `${weather.typeLabel}，气温${weather.temperature}°C，相对湿度${weather.humidity}%，${weather.windLabel}`
+        });
+
+        if (['lightRain', 'heavyRain', 'thunderstorm'].includes(weather.typeKey)) {
+            suggestions.push({
+                level: 'warn',
+                icon: 'fa-umbrella',
+                title: '包裹防潮提醒',
+                desc: '雨天配送请携带防水袋，对纸质包裹、电子商品做好防潮保护，避免淋湿损坏。'
+            });
+            if (weather.typeKey === 'thunderstorm') {
+                suggestions.push({
+                    level: 'alert',
+                    icon: 'fa-bolt',
+                    title: '雷雨安全提示',
+                    desc: '雷电天气请避免在空旷区域、大树下停留，注意人身安全优先于配送时效。'
+                });
+            }
+            if (weather.typeKey === 'heavyRain') {
+                suggestions.push({
+                    level: 'warn',
+                    icon: 'fa-shoe-prints',
+                    title: '出行注意防滑',
+                    desc: '地面积水较多，请穿着防滑鞋，小心路滑，低速通过积水区域。'
+                });
+            }
+        }
+
+        if (weather.typeKey === 'hot' || weather.temperature >= 32) {
+            suggestions.push({
+                level: 'warn',
+                icon: 'fa-sun',
+                title: '避免包裹暴晒',
+                desc: '高温天气请勿将包裹长时间置于阳光下，食品、化妆品、电子类商品注意遮阳。'
+            });
+            suggestions.push({
+                level: 'safe',
+                icon: 'fa-bottle-water',
+                title: '防暑降温建议',
+                desc: '配送途中及时补充水分，备好防暑用品，合理安排休息避免中暑。'
+            });
+        }
+
+        if (weather.temperature <= 3 || weather.typeKey === 'cold') {
+            suggestions.push({
+                level: 'info',
+                icon: 'fa-mitten',
+                title: '防寒保暖提示',
+                desc: '气温较低，配送时注意佩戴手套、围巾，做好防寒保暖措施。'
+            });
+        }
+
+        if (['snow', 'heavySnow'].includes(weather.typeKey)) {
+            suggestions.push({
+                level: 'alert',
+                icon: 'fa-person-walking',
+                title: '雪天路滑小心',
+                desc: '路面结冰湿滑，请减速慢行，上下楼梯注意防滑，确保人身及包裹安全。'
+            });
+            if (weather.typeKey === 'heavySnow') {
+                suggestions.push({
+                    level: 'warn',
+                    icon: 'fa-box',
+                    title: '包裹防湿防冻',
+                    desc: '大雪天请用防水袋包裹商品，怕冻物品（如生鲜、液态）做好保温措施。'
+                });
+            }
+        }
+
+        if (weather.typeKey === 'windy' || weather.windLevel >= 5) {
+            suggestions.push({
+                level: 'warn',
+                icon: 'fa-box-open',
+                title: '轻件固定提醒',
+                desc: '大风天气请将小件、轻质包裹固定好，避免途中被风吹落或吹散。'
+            });
+            suggestions.push({
+                level: 'alert',
+                icon: 'fa-triangle-exclamation',
+                title: '高空坠物风险',
+                desc: '注意避开广告牌、树木、临时搭建物等易被风吹落的区域，谨防高空坠物。'
+            });
+        }
+
+        if (weather.typeKey === 'fog') {
+            suggestions.push({
+                level: 'warn',
+                icon: 'fa-eye',
+                title: '低能见度注意',
+                desc: '雾霾天气能见度低，穿越道路请减速观察，注意来往车辆，确保交通安全。'
+            });
+            suggestions.push({
+                level: 'info',
+                icon: 'fa-face-mask',
+                title: '防护用品建议',
+                desc: '空气质量较差，请佩戴口罩做好防护，减少长时间户外停留。'
+            });
+        }
+
+        if (weather.humidity >= 80) {
+            suggestions.push({
+                level: 'info',
+                icon: 'fa-droplet',
+                title: '高湿度防潮建议',
+                desc: '空气湿度较大，建议对衣物、纸质文件、数码产品等包裹做好防潮封装。'
+            });
+        }
+
+        if (suggestions.length === 1) {
+            suggestions.push({
+                level: 'safe',
+                icon: 'fa-circle-check',
+                title: '配送条件良好',
+                desc: '今日天气状况良好，适合配送，请注意交通安全，祝您好运连连！'
+            });
+        }
+
+        return suggestions;
+    }
+
+    async function fetchWeatherData() {
+        try {
+            const resp = await fetch('/api/weather');
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data && data.typeKey && WEATHER_TYPES[data.typeKey]) {
+                    const t = WEATHER_TYPES[data.typeKey];
+                    return {
+                        typeKey: data.typeKey,
+                        typeLabel: t.label,
+                        icon: t.icon,
+                        iconClass: t.iconClass,
+                        temperature: data.temperature ?? 25,
+                        humidity: data.humidity ?? 60,
+                        windLevel: data.windLevel ?? 2,
+                        windLabel: data.windLabel || '东风 2级'
+                    };
+                }
+            }
+        } catch (e) {
+            // Fallback to mock data
+        }
+        return generateMockWeather();
+    }
+
+    let currentWeather = null;
+
+    async function loadWeatherCard() {
+        if (!elements.weatherCardContainer) return;
+
+        currentWeather = await fetchWeatherData();
+        const suggestions = generateWeatherSuggestions(currentWeather);
+
+        const summaryText = `${currentWeather.typeLabel} · ${currentWeather.temperature}°C · ${currentWeather.humidity}% · ${currentWeather.windLabel}`;
+
+        const suggestionsHTML = suggestions.map(s => `
+            <div class="weather-suggestion-item">
+                <div class="weather-suggestion-icon ${s.level}">
+                    <i class="fas ${s.icon}"></i>
+                </div>
+                <div class="weather-suggestion-text">
+                    <div class="weather-suggestion-title">${s.title}</div>
+                    <div class="weather-suggestion-desc">${s.desc}</div>
+                </div>
+            </div>
+        `).join('');
+
+        const html = `
+            <div class="weather-card ${weatherCollapsed ? 'collapsed' : ''}" id="weather-card-el">
+                <div class="weather-card-header" id="weather-card-toggle">
+                    <div class="weather-card-icon ${currentWeather.iconClass}">
+                        <i class="fas ${currentWeather.icon}"></i>
+                    </div>
+                    <div class="weather-info-main">
+                        <div class="weather-temperature">
+                            <span class="weather-temp-value">${currentWeather.temperature}</span>
+                            <span class="weather-temp-unit">°C</span>
+                        </div>
+                        <div class="weather-condition">${currentWeather.typeLabel}</div>
+                        <div class="weather-summary-line">
+                            <span class="weather-meta-item"><i class="fas fa-droplet"></i> 湿度 ${currentWeather.humidity}%</span>
+                            <span class="weather-meta-item"><i class="fas fa-wind"></i> ${currentWeather.windLabel}</span>
+                        </div>
+                    </div>
+                    <div class="weather-collapsed-summary">
+                        <span>${currentWeather.typeLabel} ${currentWeather.temperature}°C</span>
+                        <span style="color: #94a3b8; font-size: 0.85rem;">·</span>
+                        <span style="color: #94a3b8; font-size: 0.85rem; font-weight: 500;">配送建议${suggestions.length}条</span>
+                    </div>
+                    <button class="weather-toggle-btn" title="${weatherCollapsed ? '展开' : '折叠'}">
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                </div>
+                <div class="weather-card-body">
+                    <div class="weather-suggestions-title">
+                        <i class="fas fa-lightbulb"></i> 今日配送建议
+                    </div>
+                    <div class="weather-suggestions-list">
+                        ${suggestionsHTML}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        elements.weatherCardContainer.innerHTML = html;
+
+        const toggleEl = document.getElementById('weather-card-toggle');
+        if (toggleEl) {
+            toggleEl.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const cardEl = document.getElementById('weather-card-el');
+                if (cardEl) {
+                    weatherCollapsed = !weatherCollapsed;
+                    cardEl.classList.toggle('collapsed', weatherCollapsed);
+                    localStorage.setItem('weatherCollapsed', String(weatherCollapsed));
+                    const btn = toggleEl.querySelector('.weather-toggle-btn');
+                    if (btn) {
+                        btn.title = weatherCollapsed ? '展开' : '折叠';
+                    }
+                }
+            });
+        }
     }
 
     // Init

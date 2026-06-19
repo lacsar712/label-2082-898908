@@ -1109,6 +1109,105 @@ static void handle_get_nearby_orders(int client_socket, char *query_string) {
   log_message(LOG_INFO, "Nearby orders fetched - building:%s range:%d", building, range);
 }
 
+static int rand_range(int min, int max) {
+  if (min >= max) return min;
+  return min + rand() % (max - min + 1);
+}
+
+static void handle_get_weather(int client_socket, char *query_string) {
+  (void)query_string;
+  srand((unsigned int)time(NULL));
+
+  time_t now = time(NULL);
+  struct tm *t = localtime(&now);
+  int month = t->tm_mon + 1;
+
+  const char *weather_keys[] = {
+      "sunny", "partlyCloudy", "cloudy", "lightRain", "heavyRain",
+      "thunderstorm", "snow", "heavySnow", "windy", "hot", "cold", "fog"
+  };
+  const char *weather_labels[] = {
+      "晴", "多云", "阴", "小雨", "大雨",
+      "雷阵雨", "小雪", "大雪", "大风", "高温", "寒冷", "雾霾"
+  };
+  const char *wind_directions[] = {
+      "东北风", "东风", "东南风", "南风",
+      "西南风", "西风", "西北风", "北风"
+  };
+  const char *wind_levels[] = {"1级", "2级", "3级", "4级", "5级", "6级", "7级"};
+
+  int idx_start, idx_end;
+  if (month >= 6 && month <= 8) {
+    idx_start = 0; idx_end = 11;
+  } else if (month == 12 || month <= 2) {
+    idx_start = 0; idx_end = 11;
+  } else {
+    idx_start = 0; idx_end = 11;
+  }
+
+  int type_idx = rand_range(idx_start, idx_end);
+  const char *type_key = weather_keys[type_idx];
+  const char *type_label = weather_labels[type_idx];
+
+  int temperature;
+  if (strcmp(type_key, "hot") == 0) {
+    temperature = rand_range(33, 38);
+  } else if (strcmp(type_key, "cold") == 0 ||
+             strcmp(type_key, "snow") == 0 ||
+             strcmp(type_key, "heavySnow") == 0) {
+    temperature = rand_range(-3, 4);
+  } else if (month >= 6 && month <= 8) {
+    temperature = rand_range(24, 35);
+  } else if (month == 12 || month <= 2) {
+    temperature = rand_range(0, 11);
+  } else {
+    temperature = rand_range(12, 26);
+  }
+
+  int humidity;
+  if (strcmp(type_key, "lightRain") == 0 ||
+      strcmp(type_key, "heavyRain") == 0 ||
+      strcmp(type_key, "thunderstorm") == 0) {
+    humidity = rand_range(75, 89);
+  } else if (strcmp(type_key, "hot") == 0 || strcmp(type_key, "sunny") == 0) {
+    humidity = rand_range(30, 49);
+  } else if (strcmp(type_key, "fog") == 0) {
+    humidity = rand_range(85, 94);
+  } else {
+    humidity = rand_range(45, 74);
+  }
+
+  int wind_level;
+  if (strcmp(type_key, "windy") == 0 ||
+      strcmp(type_key, "thunderstorm") == 0 ||
+      strcmp(type_key, "heavyRain") == 0 ||
+      strcmp(type_key, "heavySnow") == 0) {
+    wind_level = rand_range(5, 7);
+  } else {
+    wind_level = rand_range(1, 4);
+  }
+
+  int wind_dir_idx = rand_range(0, 7);
+  char wind_label[64];
+  snprintf(wind_label, sizeof(wind_label), "%s %s",
+           wind_directions[wind_dir_idx], wind_levels[wind_level - 1]);
+
+  char response_header[] = "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+                           "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char json[1024];
+  snprintf(json, sizeof(json),
+           "{\"status\":\"success\",\"typeKey\":\"%s\",\"typeLabel\":\"%s\","
+           "\"temperature\":%d,\"humidity\":%d,\"windLevel\":%d,"
+           "\"windLabel\":\"%s\"}",
+           type_key, type_label, temperature, humidity, wind_level, wind_label);
+  send(client_socket, json, strlen(json), 0);
+
+  log_message(LOG_INFO, "Weather fetched: %s %d°C humidity:%d wind:%s",
+              type_label, temperature, humidity, wind_label);
+}
+
 void handle_request(int client_socket) {
   char buffer[BUFFER_SIZE];
   memset(buffer, 0, BUFFER_SIZE);
@@ -1162,6 +1261,10 @@ void handle_request(int client_socket) {
     char *path_start = strstr(buffer, "GET /api/orders/nearby");
     char *q = strstr(path_start, "?");
     handle_get_nearby_orders(client_socket, q);
+  } else if (strstr(buffer, "GET /api/weather")) {
+    char *path_start = strstr(buffer, "GET /api/weather");
+    char *q = strstr(path_start, "?");
+    handle_get_weather(client_socket, q);
   } else if (strstr(buffer, "GET /api/orders")) {
     char *path_start = strstr(buffer, "GET /api/orders");
     char *q = strstr(path_start, "?");
