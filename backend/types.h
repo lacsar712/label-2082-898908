@@ -3,6 +3,7 @@
 
 #define MAX_ORDERS 500
 #define MAX_USERS 100
+#define MAX_CERT_APPS 200
 #define BUFFER_SIZE 20480
 
 typedef struct {
@@ -10,6 +11,12 @@ typedef struct {
   char password[50];
   char real_name[50];
   char major[50];
+  char student_id[30];
+  char dorm_building[50];
+  char phone[20];
+  char certified[10];
+  char cert_apply_time[30];
+  char cert_audit_time[30];
 } User;
 
 typedef struct {
@@ -23,5 +30,20 @@ typedef struct {
   char category[50];
   char status[20];
 } Order;
+
+typedef struct {
+  int id;
+  char username[50];
+  char real_name[50];
+  char student_id[30];
+  char dorm_building[50];
+  char phone[20];
+  char description[500];
+  char status[20];
+  char apply_time[30];
+  char audit_time[30];
+  char auditor[50];
+  char audit_opinion[500];
+} CertApplication;
 
 #endif

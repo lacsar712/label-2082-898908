@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <time.h>
 #include <unistd.h>
 
 static void send_file(int client_socket, const char *path,
@@ -117,7 +118,7 @@ static void handle_login(int client_socket, char *body) {
 }
 
 static void handle_get_orders(int client_socket, char *query_string) {
-  char creator[50] = "", worker[50] = "", category[50] = "";
+  char creator[50] = "", worker[50] = "", category[50] = "", status[50] = "";
 
   if (query_string) {
     char *cr_ptr = strstr(query_string, "creator=");
@@ -129,6 +130,9 @@ static void handle_get_orders(int client_socket, char *query_string) {
     char *ct_ptr = strstr(query_string, "category=");
     if (ct_ptr)
       sscanf(ct_ptr + 9, "%[^& ]", category);
+    char *st_ptr = strstr(query_string, "status=");
+    if (st_ptr)
+      sscanf(st_ptr + 7, "%[^& ]", status);
   }
 
   char response_header[] = "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
@@ -141,13 +145,13 @@ static void handle_get_orders(int client_socket, char *query_string) {
     return;
   }
   memset(json, 0, MAX_ORDERS * 1024);
-  get_orders_json(json, creator, worker, category);
+  get_orders_json(json, creator, worker, category, status);
   send(client_socket, json, strlen(json), 0);
   free(json);
 
-  log_message(LOG_INFO, "Orders fetched - creator:%s worker:%s category:%s",
+  log_message(LOG_INFO, "Orders fetched - creator:%s worker:%s category:%s status:%s",
               creator[0] ? creator : "all", worker[0] ? worker : "all",
-              category[0] ? category : "all");
+              category[0] ? category : "all", status[0] ? status : "all");
 }
 
 static void handle_create_order(int client_socket, char *body) {
@@ -259,6 +263,234 @@ static void handle_update_profile(int client_socket, char *body) {
   send(client_socket, response, strlen(response), 0);
 }
 
+static void get_current_time_str(char *buf, int max_len) {
+  time_t now = time(NULL);
+  struct tm *t = localtime(&now);
+  snprintf(buf, max_len, "%04d-%02d-%02d %02d:%02d:%02d",
+           t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+           t->tm_hour, t->tm_min, t->tm_sec);
+}
+
+static void handle_submit_cert(int client_socket, char *body) {
+  char username[50] = "", student_id[30] = "", dorm_building[50] = "";
+  char phone[20] = "", description[500] = "";
+  int app_id = -1;
+
+  parse_json_string(body, "username", username, sizeof(username));
+  parse_json_string(body, "studentId", student_id, sizeof(student_id));
+  parse_json_string(body, "dormBuilding", dorm_building, sizeof(dorm_building));
+  parse_json_string(body, "phone", phone, sizeof(phone));
+  parse_json_string(body, "description", description, sizeof(description));
+  char *id_ptr = strstr(body, "\"id\":");
+  if (id_ptr)
+    sscanf(id_ptr + 5, "%d", &app_id);
+
+  if (strlen(username) == 0 || strlen(student_id) == 0 ||
+      strlen(dorm_building) == 0 || strlen(phone) == 0) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"请填写完整信息\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  int user_idx = -1;
+  for (int i = 0; i < user_count; i++) {
+    if (strcmp(users[i].username, username) == 0) {
+      user_idx = i;
+      break;
+    }
+  }
+  if (user_idx == -1) {
+    char resp[] = "HTTP/1.1 404 Not Found\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"用户不存在\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  CertApplication *app = NULL;
+  if (app_id > 0) {
+    for (int i = 0; i < cert_app_count; i++) {
+      if (cert_apps[i].id == app_id &&
+          strcmp(cert_apps[i].username, username) == 0) {
+        app = &cert_apps[i];
+        break;
+      }
+    }
+  }
+
+  if (app) {
+    strcpy(app->student_id, student_id);
+    strcpy(app->dorm_building, dorm_building);
+    strcpy(app->phone, phone);
+    strcpy(app->description, description);
+    strcpy(app->status, "pending");
+    app->audit_time[0] = '\0';
+    app->auditor[0] = '\0';
+    app->audit_opinion[0] = '\0';
+    get_current_time_str(app->apply_time, sizeof(app->apply_time));
+    log_message(LOG_INFO, "Cert application resubmitted: ID=%d user=%s",
+                app->id, username);
+  } else {
+    if (cert_app_count >= MAX_CERT_APPS) {
+      char resp[] = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: "
+                    "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"申请数量已达上限\"}";
+      send(client_socket, resp, strlen(resp), 0);
+      return;
+    }
+
+    CertApplication new_app;
+    memset(&new_app, 0, sizeof(CertApplication));
+    new_app.id = next_cert_id++;
+    strcpy(new_app.username, username);
+    strcpy(new_app.real_name, users[user_idx].real_name);
+    strcpy(new_app.student_id, student_id);
+    strcpy(new_app.dorm_building, dorm_building);
+    strcpy(new_app.phone, phone);
+    strcpy(new_app.description, description);
+    strcpy(new_app.status, "pending");
+    get_current_time_str(new_app.apply_time, sizeof(new_app.apply_time));
+
+    cert_apps[cert_app_count++] = new_app;
+    log_message(LOG_INFO, "Cert application submitted: ID=%d user=%s",
+                new_app.id, username);
+    app_id = new_app.id;
+  }
+
+  strcpy(users[user_idx].student_id, student_id);
+  strcpy(users[user_idx].dorm_building, dorm_building);
+  strcpy(users[user_idx].phone, phone);
+  if (strlen(users[user_idx].certified) == 0)
+    strcpy(users[user_idx].certified, "pending");
+  get_current_time_str(users[user_idx].cert_apply_time,
+                       sizeof(users[user_idx].cert_apply_time));
+
+  save_data();
+
+  char resp[256];
+  snprintf(resp, sizeof(resp),
+           "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+           "{\"status\":\"success\",\"id\":%d}",
+           app_id);
+  send(client_socket, resp, strlen(resp), 0);
+}
+
+static void handle_get_cert_apps(int client_socket, char *query_string) {
+  char username[50] = "", status[50] = "";
+
+  if (query_string) {
+    char *u_ptr = strstr(query_string, "username=");
+    if (u_ptr)
+      sscanf(u_ptr + 9, "%[^& ]", username);
+    char *s_ptr = strstr(query_string, "status=");
+    if (s_ptr)
+      sscanf(s_ptr + 7, "%[^& ]", status);
+  }
+
+  char response_header[] = "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+                           "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(MAX_CERT_APPS * 2048);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for cert apps JSON");
+    return;
+  }
+  memset(json, 0, MAX_CERT_APPS * 2048);
+  get_cert_apps_json(json, username, status);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Cert apps fetched - username:%s status:%s",
+              username[0] ? username : "all", status[0] ? status : "all");
+}
+
+static void handle_audit_cert(int client_socket, char *body) {
+  int id = -1;
+  char action[20] = "", auditor[50] = "", opinion[500] = "";
+
+  char *id_ptr = strstr(body, "\"id\":");
+  if (id_ptr)
+    sscanf(id_ptr + 5, "%d", &id);
+  parse_json_string(body, "action", action, sizeof(action));
+  parse_json_string(body, "auditor", auditor, sizeof(auditor));
+  parse_json_string(body, "opinion", opinion, sizeof(opinion));
+
+  if (id <= 0 || (strcmp(action, "approve") != 0 && strcmp(action, "reject") != 0)) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"参数错误\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  CertApplication *app = NULL;
+  for (int i = 0; i < cert_app_count; i++) {
+    if (cert_apps[i].id == id) {
+      app = &cert_apps[i];
+      break;
+    }
+  }
+
+  if (!app) {
+    char resp[] = "HTTP/1.1 404 Not Found\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"申请不存在\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  if (strcmp(app->status, "pending") != 0) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"该申请已审核\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  if (strcmp(action, "approve") == 0) {
+    strcpy(app->status, "approved");
+  } else {
+    strcpy(app->status, "rejected");
+  }
+  strcpy(app->auditor, auditor);
+  strcpy(app->audit_opinion, opinion);
+  get_current_time_str(app->audit_time, sizeof(app->audit_time));
+
+  for (int i = 0; i < user_count; i++) {
+    if (strcmp(users[i].username, app->username) == 0) {
+      if (strcmp(action, "approve") == 0) {
+        strcpy(users[i].certified, "yes");
+      } else {
+        strcpy(users[i].certified, "rejected");
+      }
+      strcpy(users[i].cert_audit_time, app->audit_time);
+      break;
+    }
+  }
+
+  save_data();
+  log_message(LOG_INFO, "Cert application %s: ID=%d by %s", action, id, auditor);
+
+  char response[] = "HTTP/1.1 200 OK\r\nContent-Type: "
+                    "application/json\r\n\r\n{\"status\":\"success\"}";
+  send(client_socket, response, strlen(response), 0);
+}
+
+static void handle_get_user(int client_socket, char *query_string) {
+  char username[50] = "";
+  if (query_string) {
+    char *u_ptr = strstr(query_string, "username=");
+    if (u_ptr)
+      sscanf(u_ptr + 9, "%[^& ]", username);
+  }
+
+  char response_header[] = "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+                           "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char json[2048];
+  memset(json, 0, sizeof(json));
+  get_user_json(json, username);
+  send(client_socket, json, strlen(json), 0);
+}
+
 void handle_request(int client_socket) {
   char buffer[BUFFER_SIZE];
   memset(buffer, 0, BUFFER_SIZE);
@@ -330,6 +562,41 @@ void handle_request(int client_socket) {
       body += 4;
       handle_update_profile(client_socket, body);
     }
+  } else if (strstr(buffer, "POST /api/cert/submit")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_submit_cert(client_socket, body);
+    }
+  } else if (strstr(buffer, "GET /api/cert/apps")) {
+    char *path_start = strstr(buffer, "GET /api/cert/apps");
+    char *q = strstr(path_start, "?");
+    handle_get_cert_apps(client_socket, q);
+  } else if (strstr(buffer, "POST /api/cert/audit")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_audit_cert(client_socket, body);
+    }
+  } else if (strstr(buffer, "GET /api/users")) {
+    char response_header[] = "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+                             "charset=UTF-8\r\n\r\n";
+    send(client_socket, response_header, strlen(response_header), 0);
+
+    char *json = malloc(MAX_USERS * 1024);
+    if (!json) {
+      log_message(LOG_ERROR, "Failed to allocate memory for users JSON");
+      return;
+    }
+    memset(json, 0, MAX_USERS * 1024);
+    get_users_json(json);
+    send(client_socket, json, strlen(json), 0);
+    free(json);
+    log_message(LOG_INFO, "Users list fetched");
+  } else if (strstr(buffer, "GET /api/user")) {
+    char *path_start = strstr(buffer, "GET /api/user");
+    char *q = strstr(path_start, "?");
+    handle_get_user(client_socket, q);
   } else {
     log_message(LOG_WARN, "404 Not Found: %.50s", buffer);
     char response[] = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";

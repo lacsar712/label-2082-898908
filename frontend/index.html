@@ -70,13 +70,17 @@
                 <a href="#" class="nav-item active" data-tab="dashboard"><i class="fas fa-th-large"></i> 任务大厅</a>
                 <a href="#" class="nav-item" data-tab="my-orders"><i class="fas fa-clipboard-list"></i> 我的订单</a>
                 <a href="#" class="nav-item" data-tab="post-task"><i class="fas fa-plus-circle"></i> 发布悬赏</a>
+                <a href="#" class="nav-item" data-tab="cert-apply" id="nav-cert-apply"><i class="fas fa-id-card"></i> 跑腿认证</a>
+                <a href="#" class="nav-item" data-tab="cert-record" id="nav-cert-record"><i class="fas fa-history"></i> 认证记录</a>
+                <a href="#" class="nav-item" data-tab="leaderboard"><i class="fas fa-trophy"></i> 跑腿排行</a>
+                <a href="#" class="nav-item" data-tab="cert-audit" id="nav-cert-audit" style="display:none;"><i class="fas fa-user-check"></i> 认证审核</a>
                 <a href="#" class="nav-item" data-tab="profile"><i class="fas fa-user-circle"></i> 个人中心</a>
             </nav>
             <div class="sidebar-footer">
                 <div class="user-card" id="sidebar-user-card">
                     <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="Avatar">
                     <div class="user-info">
-                        <p class="user-name" id="display-name">加载中...</p>
+                        <p class="user-name" id="display-name">加载中... <span class="cert-badge" id="sidebar-cert-badge" style="display:none;"><i class="fas fa-check-circle"></i> 已认证</span></p>
                         <p class="user-role" id="display-major">...</p>
                     </div>
                 </div>
@@ -176,7 +180,7 @@
                             <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="User">
                         </div>
                         <div class="profile-meta">
-                            <h2 id="profile-realname">加载中...</h2>
+                            <h2 id="profile-realname">加载中... <span class="cert-badge profile-cert" id="profile-cert-badge" style="display:none;"><i class="fas fa-check-circle"></i> 已认证</span></h2>
                             <p id="profile-major-disp">...</p>
                         </div>
                     </div>
@@ -198,7 +202,76 @@
                         <button class="p-action-btn" id="edit-profile-btn"><i class="fas fa-edit"></i> 修改个人资料</button>
                         <button class="p-action-btn" id="account-sec-btn"><i class="fas fa-shield-alt"></i>
                             账户安全</button>
+                        <button class="p-action-btn primary-btn" id="cert-entry-btn"><i class="fas fa-id-card"></i> 跑腿员认证</button>
                     </div>
+                </div>
+            </section>
+
+            <!-- Cert Apply -->
+            <section class="view-section hidden" id="cert-apply-tab">
+                <div class="form-container">
+                    <h2><i class="fas fa-id-card"></i> 跑腿员认证申请</h2>
+                    <p class="form-desc">成为认证跑腿员，享受专属标识和更多信任</p>
+                    <form id="cert-form">
+                        <input type="hidden" id="cert-app-id" value="">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>学号 <span style="color: #94a3b8; font-size: 0.85rem;">(必填)</span></label>
+                                <input type="text" id="cert-student-id" placeholder="请输入学号" maxlength="20" required>
+                            </div>
+                            <div class="form-group">
+                                <label>宿舍楼栋 <span style="color: #94a3b8; font-size: 0.85rem;">(必填)</span></label>
+                                <input type="text" id="cert-dorm" placeholder="如：13号楼" maxlength="30" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>手机号 <span style="color: #94a3b8; font-size: 0.85rem;">(必填)</span></label>
+                            <input type="tel" id="cert-phone" placeholder="请输入手机号" maxlength="15" required>
+                        </div>
+                        <div class="form-group">
+                            <label>申请说明</label>
+                            <textarea id="cert-description" rows="4" placeholder="简单介绍一下你的情况，如可配送时间、熟悉区域等" maxlength="500" style="width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #e2e8f0; outline: none; resize: vertical; font-family: inherit;"></textarea>
+                        </div>
+                        <div class="cert-notice">
+                            <i class="fas fa-info-circle"></i>
+                            <span>提交后将进入审核状态，管理员审核通过后即可获得认证标识</span>
+                        </div>
+                        <button type="submit" class="submit-btn" id="cert-submit-btn">提交认证申请</button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Cert Record -->
+            <section class="view-section hidden" id="cert-record-tab">
+                <div class="section-header">
+                    <h2><i class="fas fa-history"></i> 认证记录</h2>
+                </div>
+                <div class="cert-record-container" id="cert-record-list">
+                    <div style="text-align: center; color: #64748b; padding: 40px;">加载中...</div>
+                </div>
+            </section>
+
+            <!-- Leaderboard -->
+            <section class="view-section hidden" id="leaderboard-tab">
+                <div class="section-header">
+                    <h2><i class="fas fa-trophy"></i> 跑腿员排行榜</h2>
+                </div>
+                <div class="leaderboard-container" id="leaderboard-list">
+                    <div style="text-align: center; color: #64748b; padding: 40px;">加载中...</div>
+                </div>
+            </section>
+
+            <!-- Cert Audit (Admin) -->
+            <section class="view-section hidden" id="cert-audit-tab">
+                <div class="section-header">
+                    <h2><i class="fas fa-user-check"></i> 认证审核管理</h2>
+                    <div class="view-toggle">
+                        <button class="toggle-btn active" id="audit-filter-pending">待审核</button>
+                        <button class="toggle-btn" id="audit-filter-all">全部</button>
+                    </div>
+                </div>
+                <div class="cert-audit-list" id="cert-audit-list">
+                    <div style="text-align: center; color: #64748b; padding: 40px;">加载中...</div>
                 </div>
             </section>
         </main>
@@ -240,6 +313,27 @@
                     <button type="button" class="btn-outline"
                         onclick="document.getElementById('security-modal').classList.add('hidden')">取消</button>
                     <button type="submit" class="btn-primary">确认修改</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="audit-modal" class="overlay hidden">
+        <div class="auth-card" style="width: 450px;">
+            <h2><i class="fas fa-user-check"></i> 认证审核</h2>
+            <div id="audit-applicant-info" style="margin: 20px 0; padding: 15px; background: #f8fafc; border-radius: 12px;">
+            </div>
+            <form id="audit-form" style="margin-top:20px;">
+                <input type="hidden" id="audit-app-id" value="">
+                <input type="hidden" id="audit-action" value="">
+                <div class="form-group">
+                    <label>审核意见</label>
+                    <textarea id="audit-opinion" rows="3" placeholder="请填写审核意见" maxlength="500" style="width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #e2e8f0; outline: none; resize: vertical; font-family: inherit;"></textarea>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:20px;">
+                    <button type="button" class="btn-outline"
+                        onclick="document.getElementById('audit-modal').classList.add('hidden')">取消</button>
+                    <button type="submit" class="btn-primary" id="audit-submit-btn">确认审核</button>
                 </div>
             </form>
         </div>
