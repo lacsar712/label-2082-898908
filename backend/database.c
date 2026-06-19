@@ -272,6 +272,7 @@ void load_data() {
     strcpy(users[user_count].real_name, "张小凡");
     strcpy(users[user_count].major, "信安 2101");
     strcpy(users[user_count].certified, "yes");
+    strcpy(users[user_count].create_time, "2026-01-01 00:00:00");
     user_count++;
     save_data();
     log_message(LOG_INFO, "Created default admin user");

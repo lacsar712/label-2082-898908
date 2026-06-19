@@ -20,5 +20,6 @@ void get_conversations_json(char *buf, const char *username);
 void get_messages_json(char *buf, int thread_id);
 int find_or_create_thread(const char *user1, const char *user2);
 int get_unread_message_count(const char *username);
+void get_stats_json(char *buf, const char *range);
 
 #endif

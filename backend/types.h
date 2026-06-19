@@ -51,6 +51,7 @@ typedef struct {
   char certified[10];
   char cert_apply_time[30];
   char cert_audit_time[30];
+  char create_time[30];
 } User;
 
 typedef struct {
@@ -64,6 +65,7 @@ typedef struct {
   char category[50];
   char status[20];
   char building_tag[50];
+  char create_time[30];
 } Order;
 
 typedef struct {

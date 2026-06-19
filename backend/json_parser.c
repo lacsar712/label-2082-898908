@@ -395,3 +395,110 @@ int get_unread_message_count(const char *username) {
   }
   return count;
 }
+
+static int is_date_in_range(const char *create_time, const char *target_date) {
+  if (strlen(create_time) < 10) return 0;
+  return strncmp(create_time, target_date, 10) == 0;
+}
+
+static void get_date_str(struct tm *t, char *buf, int max_len) {
+  snprintf(buf, max_len, "%04d-%02d-%02d",
+           t->tm_year + 1900, t->tm_mon + 1, t->tm_mday);
+}
+
+void get_stats_json(char *buf, const char *range) {
+  time_t now = time(NULL);
+  struct tm *t = localtime(&now);
+
+  char today_str[20];
+  get_date_str(t, today_str, sizeof(today_str));
+
+  int total_users = user_count;
+  int total_orders = order_count;
+
+  int today_new_users = 0;
+  int today_new_orders = 0;
+  for (int i = 0; i < user_count; i++) {
+    if (is_date_in_range(users[i].create_time, today_str)) {
+      today_new_users++;
+    }
+  }
+  for (int i = 0; i < order_count; i++) {
+    if (is_date_in_range(orders[i].create_time, today_str)) {
+      today_new_orders++;
+    }
+  }
+
+  int pending_count = 0, accepted_count = 0, delivered_count = 0;
+  int completed_count = 0, cancelled_count = 0;
+  for (int i = 0; i < order_count; i++) {
+    if (strcmp(orders[i].status, "pending") == 0) pending_count++;
+    else if (strcmp(orders[i].status, "accepted") == 0) accepted_count++;
+    else if (strcmp(orders[i].status, "delivered") == 0) delivered_count++;
+    else if (strcmp(orders[i].status, "completed") == 0) completed_count++;
+    else if (strcmp(orders[i].status, "cancelled") == 0) cancelled_count++;
+  }
+
+  int days = 7;
+  if (range && strcmp(range, "today") == 0) days = 1;
+  else if (range && strcmp(range, "week") == 0) days = 7;
+  else if (range && strcmp(range, "month") == 0) days = 30;
+
+  char daily_labels[60][20];
+  int daily_order_counts[60] = {0};
+  int daily_user_counts[60] = {0};
+
+  for (int d = 0; d < days; d++) {
+    time_t day_time = now - (days - 1 - d) * 86400;
+    struct tm *day_tm = localtime(&day_time);
+    get_date_str(day_tm, daily_labels[d], sizeof(daily_labels[d]));
+
+    for (int i = 0; i < order_count; i++) {
+      if (is_date_in_range(orders[i].create_time, daily_labels[d])) {
+        daily_order_counts[d]++;
+      }
+    }
+    for (int i = 0; i < user_count; i++) {
+      if (is_date_in_range(users[i].create_time, daily_labels[d])) {
+        daily_user_counts[d]++;
+      }
+    }
+  }
+
+  strcpy(buf, "{");
+  char tmp[256];
+
+  snprintf(tmp, sizeof(tmp), "\"totalUsers\":%d,", total_users);
+  strcat(buf, tmp);
+  snprintf(tmp, sizeof(tmp), "\"totalOrders\":%d,", total_orders);
+  strcat(buf, tmp);
+  snprintf(tmp, sizeof(tmp), "\"todayNewUsers\":%d,", today_new_users);
+  strcat(buf, tmp);
+  snprintf(tmp, sizeof(tmp), "\"todayNewOrders\":%d,", today_new_orders);
+  strcat(buf, tmp);
+
+  strcat(buf, "\"statusDistribution\":{");
+  snprintf(tmp, sizeof(tmp), "\"pending\":%d,", pending_count);
+  strcat(buf, tmp);
+  snprintf(tmp, sizeof(tmp), "\"accepted\":%d,", accepted_count);
+  strcat(buf, tmp);
+  snprintf(tmp, sizeof(tmp), "\"delivered\":%d,", delivered_count);
+  strcat(buf, tmp);
+  snprintf(tmp, sizeof(tmp), "\"completed\":%d,", completed_count);
+  strcat(buf, tmp);
+  snprintf(tmp, sizeof(tmp), "\"cancelled\":%d", cancelled_count);
+  strcat(buf, tmp);
+  strcat(buf, "},");
+
+  strcat(buf, "\"dailyTrend\":[");
+  for (int d = 0; d < days; d++) {
+    if (d > 0) strcat(buf, ",");
+    snprintf(tmp, sizeof(tmp),
+             "{\"date\":\"%s\",\"orderCount\":%d,\"userCount\":%d}",
+             daily_labels[d], daily_order_counts[d], daily_user_counts[d]);
+    strcat(buf, tmp);
+  }
+  strcat(buf, "]");
+
+  strcat(buf, "}");
+}

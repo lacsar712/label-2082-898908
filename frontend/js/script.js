@@ -145,7 +145,15 @@ document.addEventListener('DOMContentLoaded', () => {
         msgSendBtn: document.getElementById('msg-send-btn'),
         msgBackBtn: document.getElementById('msg-back-btn'),
         msgUnreadCount: document.getElementById('msg-unread-count'),
-        msgSidebar: document.getElementById('msg-sidebar')
+        msgSidebar: document.getElementById('msg-sidebar'),
+
+        navDataDashboard: document.getElementById('nav-data-dashboard'),
+        statTotalUsers: document.getElementById('stat-total-users'),
+        statTotalOrders: document.getElementById('stat-total-orders'),
+        statTodayUsers: document.getElementById('stat-today-users'),
+        statTodayOrders: document.getElementById('stat-today-orders'),
+        statusBarChart: document.getElementById('status-bar-chart'),
+        trendLineChart: document.getElementById('trend-line-chart')
     };
 
     let auditFilter = 'pending';
@@ -201,6 +209,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (elements.navEventManage) {
             const isAdmin = currentUser && currentUser.username === 'admin';
             elements.navEventManage.style.display = isAdmin ? 'flex' : 'none';
+        }
+        if (elements.navDataDashboard) {
+            const isAdmin = currentUser && currentUser.username === 'admin';
+            elements.navDataDashboard.style.display = isAdmin ? 'flex' : 'none';
         }
     }
 
@@ -339,6 +351,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tab === 'event-manage') loadEventManage();
             if (tab === 'notifications') loadNotifications();
             if (tab === 'messages') loadMessages();
+            if (tab === 'data-dashboard') loadDashboardStats('week');
         };
     });
 
@@ -3312,6 +3325,191 @@ document.addEventListener('DOMContentLoaded', () => {
             loadConversations();
         });
     }
+
+    // --- Data Dashboard ---
+    let currentStatsRange = 'week';
+
+    async function loadDashboardStats(range) {
+        if (range) currentStatsRange = range;
+        try {
+            const resp = await fetch(`/api/stats?range=${currentStatsRange}`);
+            const data = await resp.json();
+
+            if (elements.statTotalUsers) elements.statTotalUsers.textContent = data.totalUsers || 0;
+            if (elements.statTotalOrders) elements.statTotalOrders.textContent = data.totalOrders || 0;
+            if (elements.statTodayUsers) elements.statTodayUsers.textContent = data.todayNewUsers || 0;
+            if (elements.statTodayOrders) elements.statTodayOrders.textContent = data.todayNewOrders || 0;
+
+            if (data.statusDistribution) {
+                renderStatusBarChart(data.statusDistribution);
+            }
+            if (data.dailyTrend) {
+                renderTrendLineChart(data.dailyTrend);
+            }
+
+            updateRangeButtons();
+        } catch (err) {
+            console.error('Failed to load dashboard stats:', err);
+        }
+    }
+
+    function updateRangeButtons() {
+        const tab = document.getElementById('data-dashboard-tab');
+        if (!tab) return;
+        const btns = tab.querySelectorAll('.toggle-btn');
+        btns.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.range === currentStatsRange);
+        });
+    }
+
+    function renderStatusBarChart(distribution) {
+        if (!elements.statusBarChart) return;
+
+        const statusLabels = {
+            pending: '待接单',
+            accepted: '进行中',
+            delivered: '待收货',
+            completed: '已完成',
+            cancelled: '已撤回'
+        };
+
+        const statusColors = {
+            pending: '#f59e0b',
+            accepted: '#3b82f6',
+            delivered: '#8b5cf6',
+            completed: '#10b981',
+            cancelled: '#ef4444'
+        };
+
+        const statuses = ['pending', 'accepted', 'delivered', 'completed', 'cancelled'];
+        const values = statuses.map(s => distribution[s] || 0);
+        const maxValue = Math.max(...values, 1);
+
+        let html = '';
+        statuses.forEach(status => {
+            const value = distribution[status] || 0;
+            const heightPercent = (value / maxValue) * 100;
+            const color = statusColors[status];
+            html += `
+                <div class="bar-item">
+                    <span class="bar-value">${value}</span>
+                    <div class="bar-fill" style="height: ${heightPercent}%; background: linear-gradient(180deg, ${color}, ${adjustColor(color, -20)});"></div>
+                    <span class="bar-label">${statusLabels[status]}</span>
+                </div>
+            `;
+        });
+
+        elements.statusBarChart.innerHTML = html;
+    }
+
+    function adjustColor(hex, amount) {
+        const num = parseInt(hex.replace('#', ''), 16);
+        const r = Math.min(255, Math.max(0, (num >> 16) + amount));
+        const g = Math.min(255, Math.max(0, ((num >> 8) & 0x00FF) + amount));
+        const b = Math.min(255, Math.max(0, (num & 0x0000FF) + amount));
+        return `#${(1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1)}`;
+    }
+
+    function renderTrendLineChart(trendData) {
+        if (!elements.trendLineChart) return;
+        if (!trendData || trendData.length === 0) {
+            elements.trendLineChart.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:40px;">暂无数据</div>';
+            return;
+        }
+
+        const width = elements.trendLineChart.clientWidth || 500;
+        const height = 280;
+        const padding = { top: 20, right: 20, bottom: 30, left: 40 };
+        const chartWidth = width - padding.left - padding.right;
+        const chartHeight = height - padding.top - padding.bottom;
+
+        const values = trendData.map(d => d.orderCount || 0);
+        const maxValue = Math.max(...values, 1);
+        const points = trendData.map((d, i) => {
+            let x;
+            if (trendData.length === 1) {
+                x = padding.left + chartWidth / 2;
+            } else {
+                x = padding.left + (i / (trendData.length - 1)) * chartWidth;
+            }
+            const y = padding.top + chartHeight - (d.orderCount / maxValue) * chartHeight;
+            return { x, y, value: d.orderCount, date: d.date };
+        });
+
+        let linePath = `M ${points[0].x} ${points[0].y}`;
+        let areaPath = `M ${points[0].x} ${padding.top + chartHeight} L ${points[0].x} ${points[0].y}`;
+
+        for (let i = 1; i < points.length; i++) {
+            linePath += ` L ${points[i].x} ${points[i].y}`;
+            areaPath += ` L ${points[i].x} ${points[i].y}`;
+        }
+        areaPath += ` L ${points[points.length - 1].x} ${padding.top + chartHeight} Z`;
+
+        let gridLines = '';
+        const gridCount = 4;
+        for (let i = 0; i <= gridCount; i++) {
+            const y = padding.top + (i / gridCount) * chartHeight;
+            const value = Math.round(maxValue - (i / gridCount) * maxValue);
+            gridLines += `<line class="grid-line" x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" />`;
+            gridLines += `<text x="${padding.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${value}</text>`;
+        }
+
+        let xLabels = '';
+        const labelStep = Math.max(1, Math.floor(points.length / 7));
+        points.forEach((p, i) => {
+            if (i % labelStep === 0 || i === points.length - 1) {
+                const dateStr = p.date.slice(5);
+                xLabels += `<text x="${p.x}" y="${height - 8}" class="chart-label">${dateStr}</text>`;
+            }
+        });
+
+        let dataPoints = '';
+        points.forEach(p => {
+            dataPoints += `<circle class="data-point" cx="${p.x}" cy="${p.y}" r="5">
+                <title>${p.date}: ${p.value}单</title>
+            </circle>`;
+        });
+
+        const svg = `
+            <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+                <defs>
+                    <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+                        <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+                    </linearGradient>
+                    <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" style="stop-color:#6366f1;stop-opacity:0.2" />
+                        <stop offset="100%" style="stop-color:#6366f1;stop-opacity:0" />
+                    </linearGradient>
+                </defs>
+                ${gridLines}
+                <path class="trend-area" d="${areaPath}" />
+                <path class="trend-line" d="${linePath}" />
+                ${dataPoints}
+                ${xLabels}
+            </svg>
+        `;
+
+        elements.trendLineChart.innerHTML = svg;
+    }
+
+    document.addEventListener('click', (e) => {
+        const tab = document.getElementById('data-dashboard-tab');
+        if (!tab || tab.classList.contains('hidden')) return;
+
+        const btn = e.target.closest('.toggle-btn');
+        if (btn && btn.dataset.range) {
+            const range = btn.dataset.range;
+            loadDashboardStats(range);
+        }
+    });
+
+    window.addEventListener('resize', () => {
+        const tab = document.getElementById('data-dashboard-tab');
+        if (tab && !tab.classList.contains('hidden')) {
+            loadDashboardStats();
+        }
+    });
 
     // Init
     updateUIForLogin();

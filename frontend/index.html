@@ -68,6 +68,7 @@
             </div>
             <nav class="nav-menu">
                 <a href="#" class="nav-item active" data-tab="dashboard"><i class="fas fa-th-large"></i> 任务大厅</a>
+                <a href="#" class="nav-item" data-tab="data-dashboard" id="nav-data-dashboard" style="display:none;"><i class="fas fa-chart-line"></i> 数据看板</a>
                 <a href="#" class="nav-item" data-tab="my-orders"><i class="fas fa-clipboard-list"></i> 我的订单</a>
                 <a href="#" class="nav-item" data-tab="route-plan"><i class="fas fa-route"></i> 路线规划</a>
                 <a href="#" class="nav-item" data-tab="mutual-aid"><i class="fas fa-hands-helping"></i> 楼栋互助</a>
@@ -128,6 +129,60 @@
                     <button class="pill" data-filter="中通">中通/圆通</button>
                 </div>
                 <div class="order-grid" id="order-list"></div>
+            </section>
+
+            <!-- Data Dashboard (Admin) -->
+            <section class="view-section hidden" id="data-dashboard-tab">
+                <div class="section-header">
+                    <h2><i class="fas fa-chart-line"></i> 数据看板</h2>
+                    <div class="view-toggle">
+                        <button class="toggle-btn" data-range="today">今日</button>
+                        <button class="toggle-btn active" data-range="week">本周</button>
+                        <button class="toggle-btn" data-range="month">本月</button>
+                    </div>
+                </div>
+
+                <div class="stats-cards">
+                    <div class="stat-card">
+                        <div class="stat-icon user-icon"><i class="fas fa-users"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-label">注册用户总数</span>
+                            <span class="stat-value" id="stat-total-users">0</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon order-icon"><i class="fas fa-boxes"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-label">订单总量</span>
+                            <span class="stat-value" id="stat-total-orders">0</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon new-user-icon"><i class="fas fa-user-plus"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-label">今日新增用户</span>
+                            <span class="stat-value" id="stat-today-users">0</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon new-order-icon"><i class="fas fa-shopping-cart"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-label">今日新增订单</span>
+                            <span class="stat-value" id="stat-today-orders">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="charts-container">
+                    <div class="chart-card">
+                        <h3><i class="fas fa-chart-bar"></i> 订单状态分布</h3>
+                        <div class="bar-chart" id="status-bar-chart"></div>
+                    </div>
+                    <div class="chart-card">
+                        <h3><i class="fas fa-chart-line"></i> 订单趋势</h3>
+                        <div class="line-chart" id="trend-line-chart"></div>
+                    </div>
+                </div>
             </section>
 
             <!-- My Orders -->

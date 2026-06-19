@@ -11,6 +11,8 @@
 #include <time.h>
 #include <unistd.h>
 
+static void get_current_time_str(char *buf, int max_len);
+
 static void send_file(int client_socket, const char *path,
                       const char *content_type) {
   int fd = open(path, O_RDONLY);
@@ -66,6 +68,7 @@ static void handle_register(int client_socket, char *body) {
   }
 
   if (user_count < MAX_USERS) {
+    get_current_time_str(u.create_time, sizeof(u.create_time));
     users[user_count++] = u;
     save_data();
     log_message(LOG_INFO, "User registered: %s (%s)", u.username, u.real_name);
@@ -207,6 +210,7 @@ static void handle_create_order(int client_socket, char *body) {
   }
 
   strcpy(new_order.status, "pending");
+  get_current_time_str(new_order.create_time, sizeof(new_order.create_time));
 
   if (order_count < MAX_ORDERS) {
     orders[order_count++] = new_order;
@@ -1382,6 +1386,33 @@ static void handle_get_weather(int client_socket, char *query_string) {
               type_label, temperature, humidity, wind_label);
 }
 
+static void handle_get_stats(int client_socket, char *query_string) {
+  char range[20] = "week";
+
+  if (query_string) {
+    char *r_ptr = strstr(query_string, "range=");
+    if (r_ptr) {
+      sscanf(r_ptr + 6, "%[^& ]", range);
+    }
+  }
+
+  char response_header[] = "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+                           "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(8192);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for stats JSON");
+    return;
+  }
+  memset(json, 0, 8192);
+  get_stats_json(json, range);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Stats fetched - range:%s", range);
+}
+
 void handle_request(int client_socket) {
   char buffer[BUFFER_SIZE];
   memset(buffer, 0, BUFFER_SIZE);
@@ -1584,6 +1615,10 @@ void handle_request(int client_socket) {
       body += 4;
       handle_mark_messages_read(client_socket, body);
     }
+  } else if (strstr(buffer, "GET /api/stats")) {
+    char *path_start = strstr(buffer, "GET /api/stats");
+    char *q = strstr(path_start, "?");
+    handle_get_stats(client_socket, q);
   } else {
     log_message(LOG_WARN, "404 Not Found: %.50s", buffer);
     char response[] = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
