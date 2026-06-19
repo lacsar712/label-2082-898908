@@ -59,10 +59,13 @@ document.addEventListener('DOMContentLoaded', () => {
         auditAction: document.getElementById('audit-action'),
         auditOpinion: document.getElementById('audit-opinion'),
         auditApplicantInfo: document.getElementById('audit-applicant-info'),
-        auditSubmitBtn: document.getElementById('audit-submit-btn')
+        auditSubmitBtn: document.getElementById('audit-submit-btn'),
+        blacklistList: document.getElementById('blacklist-list'),
+        blacklistCount: document.getElementById('blacklist-count')
     };
 
     let auditFilter = 'pending';
+    const userBlacklistCache = {};
 
     // --- Authentication ---
     async function refreshUserInfo() {
@@ -111,6 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateCertBadges();
             updateAdminNav();
             refreshUserInfo();
+            loadBlacklistCache();
 
             // Go to dashboard by default to clear any previous account's tab state
             document.querySelector('[data-tab="dashboard"]').click();
@@ -221,6 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tab === 'cert-record') loadCertRecords();
             if (tab === 'leaderboard') loadLeaderboard();
             if (tab === 'cert-audit') loadAuditList();
+            if (tab === 'blacklist') loadBlacklist();
         };
     });
 
@@ -305,6 +310,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${isMyOrders && myOrdersView === 'created' && order.status === 'pending' ?
                     `<button class="btn-outline" style="color: #ef4444;" onclick="updateStatus(${order.id}, 'cancelled')"><i class="fas fa-undo"></i> 撤回发布</button>` : ''}
                 </div>
+                ${order.creator !== currentUser.username || (order.worker && order.worker !== currentUser.username) ? `
+                <div class="card-actions">
+                    ${order.creator !== currentUser.username ? `
+                    <button class="block-action-btn ${userBlacklistCache[order.creator] ? 'blocked' : ''}" 
+                            onclick="toggleBlacklist('${order.creator}', this)">
+                        <i class="fas ${userBlacklistCache[order.creator] ? 'fa-check' : 'fa-ban'}"></i>
+                        ${userBlacklistCache[order.creator] ? '已拉黑发布人' : '拉黑发布人'}
+                    </button>` : ''}
+                    ${order.worker && order.worker !== currentUser.username ? `
+                    <button class="block-action-btn ${userBlacklistCache[order.worker] ? 'blocked' : ''}" 
+                            onclick="toggleBlacklist('${order.worker}', this)">
+                        <i class="fas ${userBlacklistCache[order.worker] ? 'fa-check' : 'fa-ban'}"></i>
+                        ${userBlacklistCache[order.worker] ? '已拉黑接单人' : '拉黑接单人'}
+                    </button>` : ''}
+                </div>` : ''}
             `;
             container.appendChild(card);
         });
@@ -398,7 +418,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify(payload)
             });
             if (!resp.ok) {
-                showToast('操作失败，请重试');
+                const data = await resp.json().catch(() => ({}));
+                showToast(data.message || '操作失败，请重试');
                 return;
             }
 
@@ -878,12 +899,174 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="leaderboard-count">${user.count}</div>
                         <div class="leaderboard-label">完成单量</div>
                     </div>
+                    ${user.username !== currentUser.username ? `
+                    <button class="block-action-btn ${userBlacklistCache[user.username] ? 'blocked' : ''}"
+                            onclick="toggleBlacklist('${user.username}', this)">
+                        <i class="fas ${userBlacklistCache[user.username] ? 'fa-check' : 'fa-ban'}"></i>
+                        ${userBlacklistCache[user.username] ? '已拉黑' : '拉黑'}
+                    </button>
+                    ` : ''}
                 </div>
             `;
         });
 
         container.innerHTML = html;
     }
+
+    // --- Blacklist ---
+    async function loadBlacklistCache() {
+        if (!currentUser) return;
+        try {
+            const resp = await fetch(`/api/blacklist?blocker=${encodeURIComponent(currentUser.username)}`);
+            const list = await resp.json();
+            for (const key of Object.keys(userBlacklistCache)) {
+                delete userBlacklistCache[key];
+            }
+            list.forEach(item => {
+                userBlacklistCache[item.blocked] = item;
+            });
+        } catch (err) {
+            console.error('Failed to load blacklist cache:', err);
+        }
+    }
+
+    async function loadBlacklist() {
+        if (!currentUser) return;
+        try {
+            const resp = await fetch(`/api/blacklist?blocker=${encodeURIComponent(currentUser.username)}`);
+            const list = await resp.json();
+            renderBlacklist(list);
+        } catch (err) {
+            console.error('Failed to load blacklist:', err);
+            elements.blacklistList.innerHTML = '<div style="text-align: center; color: #64748b; padding: 40px;">加载失败</div>';
+        }
+    }
+
+    function renderBlacklist(list) {
+        if (!list || list.length === 0) {
+            elements.blacklistList.innerHTML = '<div style="text-align: center; color: #64748b; padding: 40px;">暂无黑名单用户</div>';
+            elements.blacklistCount.textContent = '共 0 人';
+            return;
+        }
+
+        elements.blacklistCount.textContent = `共 ${list.length} 人`;
+
+        const sortedList = list.sort((a, b) => b.id - a.id);
+        let html = '';
+
+        sortedList.forEach(item => {
+            const initial = (item.blockedRealName || item.blocked || 'U').charAt(0).toUpperCase();
+            const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(item.blocked)}`;
+
+            html += `
+                <div class="blacklist-item" data-username="${item.blocked}">
+                    <div class="blacklist-avatar">
+                        <img src="${avatarUrl}" alt="${item.blocked}">
+                    </div>
+                    <div class="blacklist-info">
+                        <div class="blacklist-name">
+                            <span>${item.blockedRealName || item.blocked}</span>
+                        </div>
+                        <div class="blacklist-time">
+                            <i class="fas fa-clock"></i> 拉黑时间：${item.createTime || '-'}
+                        </div>
+                    </div>
+                    <button class="blacklist-remove-btn" onclick="removeFromBlacklist('${item.blocked}', ${item.id})">
+                        <i class="fas fa-user-plus"></i> 移出黑名单
+                    </button>
+                </div>
+            `;
+        });
+
+        elements.blacklistList.innerHTML = html;
+    }
+
+    window.toggleBlacklist = async (username, btnEl) => {
+        if (!currentUser) return;
+        if (username === currentUser.username) return;
+
+        const isBlocked = !!userBlacklistCache[username];
+
+        try {
+            if (isBlocked) {
+                await removeFromBlacklist(username, null, btnEl);
+            } else {
+                await addToBlacklist(username, btnEl);
+            }
+        } catch (err) {
+            showToast('操作失败，请重试');
+        }
+    };
+
+    async function addToBlacklist(username, btnEl = null) {
+        if (!currentUser) return;
+
+        try {
+            const resp = await fetch('/api/blacklist/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    blocker: currentUser.username,
+                    blocked: username
+                })
+            });
+            const data = await resp.json();
+            if (resp.ok && data.status === 'success') {
+                userBlacklistCache[username] = { id: data.id, blocked: username };
+                showToast('已加入黑名单');
+                if (btnEl) {
+                    btnEl.classList.add('blocked');
+                    btnEl.innerHTML = `<i class="fas fa-check"></i> 已拉黑`;
+                }
+                if (!document.getElementById('blacklist-tab').classList.contains('hidden')) {
+                    loadBlacklist();
+                }
+            } else {
+                showToast(data.message || '操作失败');
+            }
+        } catch (err) {
+            showToast('操作失败');
+            throw err;
+        }
+    }
+
+    window.removeFromBlacklist = async (username, id = null, btnEl = null) => {
+        if (!currentUser) return;
+
+        try {
+            const payload = { blocker: currentUser.username, blocked: username };
+            if (id) payload.id = id;
+
+            const resp = await fetch('/api/blacklist/remove', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await resp.json();
+            if (resp.ok && data.status === 'success') {
+                delete userBlacklistCache[username];
+                showToast('已移出黑名单');
+                if (btnEl) {
+                    btnEl.classList.remove('blocked');
+                    btnEl.innerHTML = `<i class="fas fa-ban"></i> 加入黑名单`;
+                }
+                if (!document.getElementById('blacklist-tab').classList.contains('hidden')) {
+                    loadBlacklist();
+                }
+                if (!document.getElementById('dashboard-tab').classList.contains('hidden')) {
+                    fetchOrders();
+                }
+                if (!document.getElementById('leaderboard-tab').classList.contains('hidden')) {
+                    loadLeaderboard();
+                }
+            } else {
+                showToast(data.message || '操作失败');
+            }
+        } catch (err) {
+            showToast('操作失败');
+            throw err;
+        }
+    };
 
     function showToast(msg) {
         const t = elements.toast;

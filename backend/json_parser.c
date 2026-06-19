@@ -165,3 +165,35 @@ void get_users_json(char *buf) {
   }
   strcat(buf, "]");
 }
+
+void get_blacklist_json(char *buf, const char *blocker_filter) {
+  strcat(buf, "[");
+  int first = 1;
+  for (int i = 0; i < blacklist_count; i++) {
+    if (blocker_filter && strlen(blocker_filter) > 0 &&
+        strcmp(blacklist[i].blocker, blocker_filter) != 0)
+      continue;
+
+    if (!first)
+      strcat(buf, ",");
+    char item[1024];
+    sprintf(item,
+            "{\"id\":%d,\"blocker\":\"%s\",\"blocked\":\"%s\","
+            "\"blockedRealName\":\"%s\",\"createTime\":\"%s\"}",
+            blacklist[i].id, blacklist[i].blocker, blacklist[i].blocked,
+            blacklist[i].blocked_real_name, blacklist[i].create_time);
+    strcat(buf, item);
+    first = 0;
+  }
+  strcat(buf, "]");
+}
+
+int is_user_blocked(const char *blocker, const char *blocked) {
+  for (int i = 0; i < blacklist_count; i++) {
+    if (strcmp(blacklist[i].blocker, blocker) == 0 &&
+        strcmp(blacklist[i].blocked, blocked) == 0) {
+      return 1;
+    }
+  }
+  return 0;
+}

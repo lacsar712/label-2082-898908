@@ -4,6 +4,7 @@
 #define MAX_ORDERS 500
 #define MAX_USERS 100
 #define MAX_CERT_APPS 200
+#define MAX_BLACKLIST 500
 #define BUFFER_SIZE 20480
 
 typedef struct {
@@ -45,5 +46,13 @@ typedef struct {
   char auditor[50];
   char audit_opinion[500];
 } CertApplication;
+
+typedef struct {
+  int id;
+  char blocker[50];
+  char blocked[50];
+  char blocked_real_name[50];
+  char create_time[30];
+} BlacklistEntry;
 
 #endif

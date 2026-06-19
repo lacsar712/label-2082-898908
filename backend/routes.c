@@ -199,6 +199,148 @@ static void handle_create_order(int client_socket, char *body) {
   }
 }
 
+static void get_current_time_str(char *buf, int max_len) {
+  time_t now = time(NULL);
+  struct tm *t = localtime(&now);
+  snprintf(buf, max_len, "%04d-%02d-%02d %02d:%02d:%02d",
+           t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+           t->tm_hour, t->tm_min, t->tm_sec);
+}
+
+static void handle_get_blacklist(int client_socket, char *query_string) {
+  char blocker[50] = "";
+
+  if (query_string) {
+    char *b_ptr = strstr(query_string, "blocker=");
+    if (b_ptr)
+      sscanf(b_ptr + 8, "%[^& ]", blocker);
+  }
+
+  char response_header[] = "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+                           "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(MAX_BLACKLIST * 512);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for blacklist JSON");
+    return;
+  }
+  memset(json, 0, MAX_BLACKLIST * 512);
+  get_blacklist_json(json, blocker);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Blacklist fetched - blocker:%s",
+              blocker[0] ? blocker : "all");
+}
+
+static void handle_add_blacklist(int client_socket, char *body) {
+  char blocker[50] = "", blocked[50] = "";
+
+  parse_json_string(body, "blocker", blocker, sizeof(blocker));
+  parse_json_string(body, "blocked", blocked, sizeof(blocked));
+
+  if (strlen(blocker) == 0 || strlen(blocked) == 0) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"参数不完整\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  if (strcmp(blocker, blocked) == 0) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"不能拉黑自己\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  if (is_user_blocked(blocker, blocked)) {
+    char resp[] = "HTTP/1.1 409 Conflict\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"该用户已在黑名单中\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  if (blacklist_count >= MAX_BLACKLIST) {
+    char resp[] = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"黑名单数量已达上限\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  char blocked_real_name[50] = "";
+  for (int i = 0; i < user_count; i++) {
+    if (strcmp(users[i].username, blocked) == 0) {
+      strcpy(blocked_real_name, users[i].real_name);
+      break;
+    }
+  }
+
+  BlacklistEntry entry;
+  memset(&entry, 0, sizeof(BlacklistEntry));
+  entry.id = next_blacklist_id++;
+  strcpy(entry.blocker, blocker);
+  strcpy(entry.blocked, blocked);
+  strcpy(entry.blocked_real_name, blocked_real_name);
+  get_current_time_str(entry.create_time, sizeof(entry.create_time));
+
+  blacklist[blacklist_count++] = entry;
+  save_data();
+  log_message(LOG_INFO, "User added to blacklist: %s blocked %s", blocker, blocked);
+
+  char resp[256];
+  snprintf(resp, sizeof(resp),
+           "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+           "{\"status\":\"success\",\"id\":%d}",
+           entry.id);
+  send(client_socket, resp, strlen(resp), 0);
+}
+
+static void handle_remove_blacklist(int client_socket, char *body) {
+  char blocker[50] = "", blocked[50] = "";
+  int id = -1;
+
+  char *id_ptr = strstr(body, "\"id\":");
+  if (id_ptr)
+    sscanf(id_ptr + 5, "%d", &id);
+  parse_json_string(body, "blocker", blocker, sizeof(blocker));
+  parse_json_string(body, "blocked", blocked, sizeof(blocked));
+
+  int found = -1;
+  for (int i = 0; i < blacklist_count; i++) {
+    if (id > 0) {
+      if (blacklist[i].id == id) {
+        found = i;
+        break;
+      }
+    } else {
+      if (strcmp(blacklist[i].blocker, blocker) == 0 &&
+          strcmp(blacklist[i].blocked, blocked) == 0) {
+        found = i;
+        break;
+      }
+    }
+  }
+
+  if (found == -1) {
+    char resp[] = "HTTP/1.1 404 Not Found\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"黑名单记录不存在\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  for (int i = found; i < blacklist_count - 1; i++) {
+    blacklist[i] = blacklist[i + 1];
+  }
+  blacklist_count--;
+  save_data();
+  log_message(LOG_INFO, "User removed from blacklist");
+
+  char response[] = "HTTP/1.1 200 OK\r\nContent-Type: "
+                    "application/json\r\n\r\n{\"status\":\"success\"}";
+  send(client_socket, response, strlen(response), 0);
+}
+
 static void handle_update_status(int client_socket, char *body) {
   int id = -1;
   char new_status[20] = "", worker[50] = "";
@@ -212,6 +354,16 @@ static void handle_update_status(int client_socket, char *body) {
 
   for (int i = 0; i < order_count; i++) {
     if (orders[i].id == id) {
+      if (strcmp(new_status, "accepted") == 0 && strlen(worker) > 0) {
+        if (is_user_blocked(orders[i].creator, worker)) {
+          log_message(LOG_WARN, "Order accept blocked: %s is in %s's blacklist",
+                      worker, orders[i].creator);
+          char resp[] = "HTTP/1.1 403 Forbidden\r\nContent-Type: "
+                        "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"发布者已将您加入黑名单，无法接取该订单\"}";
+          send(client_socket, resp, strlen(resp), 0);
+          return;
+        }
+      }
       strcpy(orders[i].status, new_status);
       // Only set worker if it's a pending order being accepted
       if (strcmp(new_status, "accepted") == 0 && strlen(worker) > 0) {
@@ -261,14 +413,6 @@ static void handle_update_profile(int client_socket, char *body) {
   char response[] = "HTTP/1.1 404 Not Found\r\nContent-Type: "
                     "application/json\r\n\r\n{\"status\":\"error\"}";
   send(client_socket, response, strlen(response), 0);
-}
-
-static void get_current_time_str(char *buf, int max_len) {
-  time_t now = time(NULL);
-  struct tm *t = localtime(&now);
-  snprintf(buf, max_len, "%04d-%02d-%02d %02d:%02d:%02d",
-           t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
-           t->tm_hour, t->tm_min, t->tm_sec);
 }
 
 static void handle_submit_cert(int client_socket, char *body) {
@@ -597,6 +741,22 @@ void handle_request(int client_socket) {
     char *path_start = strstr(buffer, "GET /api/user");
     char *q = strstr(path_start, "?");
     handle_get_user(client_socket, q);
+  } else if (strstr(buffer, "GET /api/blacklist")) {
+    char *path_start = strstr(buffer, "GET /api/blacklist");
+    char *q = strstr(path_start, "?");
+    handle_get_blacklist(client_socket, q);
+  } else if (strstr(buffer, "POST /api/blacklist/add")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_add_blacklist(client_socket, body);
+    }
+  } else if (strstr(buffer, "POST /api/blacklist/remove")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_remove_blacklist(client_socket, body);
+    }
   } else {
     log_message(LOG_WARN, "404 Not Found: %.50s", buffer);
     char response[] = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";

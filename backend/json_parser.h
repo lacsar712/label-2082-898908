@@ -9,5 +9,7 @@ void get_orders_json(char *buf, const char *creator_filter, const char *worker_f
 void get_cert_apps_json(char *buf, const char *username_filter, const char *status_filter);
 void get_user_json(char *buf, const char *username);
 void get_users_json(char *buf);
+void get_blacklist_json(char *buf, const char *blocker_filter);
+int is_user_blocked(const char *blocker, const char *blocked);
 
 #endif

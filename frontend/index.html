@@ -74,6 +74,7 @@
                 <a href="#" class="nav-item" data-tab="cert-record" id="nav-cert-record"><i class="fas fa-history"></i> 认证记录</a>
                 <a href="#" class="nav-item" data-tab="leaderboard"><i class="fas fa-trophy"></i> 跑腿排行</a>
                 <a href="#" class="nav-item" data-tab="cert-audit" id="nav-cert-audit" style="display:none;"><i class="fas fa-user-check"></i> 认证审核</a>
+                <a href="#" class="nav-item" data-tab="blacklist"><i class="fas fa-ban"></i> 黑名单管理</a>
                 <a href="#" class="nav-item" data-tab="profile"><i class="fas fa-user-circle"></i> 个人中心</a>
             </nav>
             <div class="sidebar-footer">
@@ -271,6 +272,17 @@
                     </div>
                 </div>
                 <div class="cert-audit-list" id="cert-audit-list">
+                    <div style="text-align: center; color: #64748b; padding: 40px;">加载中...</div>
+                </div>
+            </section>
+
+            <!-- Blacklist -->
+            <section class="view-section hidden" id="blacklist-tab">
+                <div class="section-header">
+                    <h2><i class="fas fa-ban"></i> 黑名单管理</h2>
+                    <span class="blacklist-count" id="blacklist-count">共 0 人</span>
+                </div>
+                <div class="blacklist-container" id="blacklist-list">
                     <div style="text-align: center; color: #64748b; padding: 40px;">加载中...</div>
                 </div>
             </section>

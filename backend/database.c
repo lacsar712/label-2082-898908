@@ -12,6 +12,9 @@ int next_id = 1;
 CertApplication cert_apps[MAX_CERT_APPS];
 int cert_app_count = 0;
 int next_cert_id = 1;
+BlacklistEntry blacklist[MAX_BLACKLIST];
+int blacklist_count = 0;
+int next_blacklist_id = 1;
 
 void save_cert_data() {
   FILE *f = fopen("data_cert.bin", "wb");
@@ -39,6 +42,32 @@ void load_cert_data() {
   }
 }
 
+void save_blacklist_data() {
+  FILE *f = fopen("data_blacklist.bin", "wb");
+  if (f) {
+    fwrite(&blacklist_count, sizeof(int), 1, f);
+    fwrite(&next_blacklist_id, sizeof(int), 1, f);
+    fwrite(blacklist, sizeof(BlacklistEntry), blacklist_count, f);
+    fclose(f);
+    log_message(LOG_INFO, "Blacklist data saved successfully");
+  } else {
+    log_message(LOG_ERROR, "Failed to save blacklist data");
+  }
+}
+
+void load_blacklist_data() {
+  FILE *f = fopen("data_blacklist.bin", "rb");
+  if (f) {
+    fread(&blacklist_count, sizeof(int), 1, f);
+    fread(&next_blacklist_id, sizeof(int), 1, f);
+    fread(blacklist, sizeof(BlacklistEntry), blacklist_count, f);
+    fclose(f);
+    log_message(LOG_INFO, "Loaded %d blacklist entries", blacklist_count);
+  } else {
+    log_message(LOG_WARN, "No existing blacklist data found");
+  }
+}
+
 void save_data() {
   FILE *f1 = fopen("data_orders.bin", "wb");
   if (f1) {
@@ -62,6 +91,7 @@ void save_data() {
   }
 
   save_cert_data();
+  save_blacklist_data();
 }
 
 void load_data() {
@@ -87,6 +117,7 @@ void load_data() {
   }
 
   load_cert_data();
+  load_blacklist_data();
 
   if (user_count == 0) {
     strcpy(users[user_count].username, "admin");
