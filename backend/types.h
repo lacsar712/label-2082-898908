@@ -30,6 +30,7 @@ typedef struct {
   char reward[20];
   char category[50];
   char status[20];
+  char building_tag[50];
 } Order;
 
 typedef struct {

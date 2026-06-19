@@ -70,12 +70,12 @@ static void handle_register(int client_socket, char *body) {
     save_data();
     log_message(LOG_INFO, "User registered: %s (%s)", u.username, u.real_name);
 
-    char resp[512];
+    char resp[768];
     snprintf(resp, sizeof(resp),
              "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
              "{\"status\":\"success\",\"username\":\"%s\",\"realName\":\"%s\","
-             "\"major\":\"%s\"}",
-             u.username, u.real_name, u.major);
+             "\"major\":\"%s\",\"dormBuilding\":\"%s\"}",
+             u.username, u.real_name, u.major, u.dorm_building);
     send(client_socket, resp, strlen(resp), 0);
   } else {
     log_message(LOG_ERROR, "Registration failed: max users reached");
@@ -100,12 +100,13 @@ static void handle_login(int client_socket, char *body) {
   }
 
   if (found != -1) {
-    char resp[512];
+    char resp[768];
     snprintf(resp, sizeof(resp),
              "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
              "{\"status\":\"success\",\"username\":\"%s\",\"realName\":\"%s\","
-             "\"major\":\"%s\"}",
-             users[found].username, users[found].real_name, users[found].major);
+             "\"major\":\"%s\",\"dormBuilding\":\"%s\"}",
+             users[found].username, users[found].real_name, users[found].major,
+             users[found].dorm_building);
     send(client_socket, resp, strlen(resp), 0);
     log_message(LOG_INFO, "User logged in: %s", user);
   } else {
@@ -180,6 +181,30 @@ static void handle_create_order(int client_socket, char *body) {
     strcpy(new_order.category, "中通");
   else
     strcpy(new_order.category, "其他");
+
+  {
+    char *dp = new_order.delivery_addr;
+    char *tag_start = NULL;
+    while (*dp) {
+      if ((*dp >= '0' && *dp <= '9') && (dp == new_order.delivery_addr || *(dp-1) < '0' || *(dp-1) > '9')) {
+        char *after = dp;
+        while (*after >= '0' && *after <= '9') after++;
+        if (strstr(after, "\xe5\x8f\xb7\xe6\xa5\xbc") == after) {
+          tag_start = dp;
+          break;
+        }
+      }
+      dp++;
+    }
+    if (tag_start) {
+      int n = 0;
+      char *p = tag_start;
+      while (*p >= '0' && *p <= '9') { n = n * 10 + (*p - '0'); p++; }
+      snprintf(new_order.building_tag, sizeof(new_order.building_tag), "%d\xe5\x8f\xb7\xe6\xa5\xbc", n);
+    } else {
+      strcpy(new_order.building_tag, "");
+    }
+  }
 
   strcpy(new_order.status, "pending");
 
@@ -385,12 +410,13 @@ static void handle_update_status(int client_socket, char *body) {
 }
 
 static void handle_update_profile(int client_socket, char *body) {
-  char username[50] = "", real_name[50] = "", major[50] = "", pwd[50] = "";
+  char username[50] = "", real_name[50] = "", major[50] = "", pwd[50] = "", dorm_building[50] = "";
 
   parse_json_string(body, "username", username, sizeof(username));
   parse_json_string(body, "realName", real_name, sizeof(real_name));
   parse_json_string(body, "major", major, sizeof(major));
   parse_json_string(body, "password", pwd, sizeof(pwd));
+  parse_json_string(body, "dormBuilding", dorm_building, sizeof(dorm_building));
 
   for (int i = 0; i < user_count; i++) {
     if (strcmp(users[i].username, username) == 0) {
@@ -400,6 +426,8 @@ static void handle_update_profile(int client_socket, char *body) {
         strcpy(users[i].major, major);
       if (strlen(pwd) > 0)
         strcpy(users[i].password, pwd);
+      if (strlen(dorm_building) > 0)
+        strcpy(users[i].dorm_building, dorm_building);
       save_data();
       log_message(LOG_INFO, "Profile updated for user: %s", username);
       char response[] = "HTTP/1.1 200 OK\r\nContent-Type: "
@@ -635,6 +663,85 @@ static void handle_get_user(int client_socket, char *query_string) {
   send(client_socket, json, strlen(json), 0);
 }
 
+static void handle_get_nearby_orders(int client_socket, char *query_string) {
+  char building_raw[50] = "";
+  char building[50] = "";
+  int range = 1;
+
+  if (query_string) {
+    char *b_ptr = strstr(query_string, "building=");
+    if (b_ptr) {
+      sscanf(b_ptr + 9, "%[^& ]", building_raw);
+    }
+    char *r_ptr = strstr(query_string, "range=");
+    if (r_ptr) {
+      range = atoi(r_ptr + 6);
+      if (range < 0) range = 0;
+      if (range > 15) range = 15;
+    }
+  }
+
+  url_decode(building, building_raw);
+
+  int center_num = 0;
+  {
+    char *p = building;
+    while (*p && (*p < '0' || *p > '9')) p++;
+    while (*p >= '0' && *p <= '9') { center_num = center_num * 10 + (*p - '0'); p++; }
+  }
+
+  char response_header[] = "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+                           "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(MAX_ORDERS * 1024);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for nearby orders JSON");
+    return;
+  }
+  memset(json, 0, MAX_ORDERS * 1024);
+
+  strcat(json, "[");
+  int first = 1;
+
+  for (int i = 0; i < order_count; i++) {
+    if (strlen(orders[i].building_tag) == 0) continue;
+    if (strcmp(orders[i].status, "pending") != 0) continue;
+
+    int tag_num = 0;
+    {
+      char *p = orders[i].building_tag;
+      while (*p && (*p < '0' || *p > '9')) p++;
+      while (*p >= '0' && *p <= '9') { tag_num = tag_num * 10 + (*p - '0'); p++; }
+    }
+
+    int diff = tag_num - center_num;
+    if (diff < 0) diff = -diff;
+    if (diff > range) continue;
+
+    if (!first) strcat(json, ",");
+    char item[1024];
+    sprintf(item,
+            "{\"id\":%d,\"creator\":\"%s\",\"worker\":\"%s\",\"package\":\"%s\","
+            "\"pickup\":\"%s\",\"delivery\":\"%s\",\"reward\":\"%s\","
+            "\"category\":\"%s\",\"status\":\"%s\",\"buildingTag\":\"%s\","
+            "\"buildingDist\":%d}",
+            orders[i].id, orders[i].creator,
+            (strlen(orders[i].worker) > 0 ? orders[i].worker : ""),
+            orders[i].package_info, orders[i].pickup_addr,
+            orders[i].delivery_addr, orders[i].reward, orders[i].category,
+            orders[i].status, orders[i].building_tag, diff);
+    strcat(json, item);
+    first = 0;
+  }
+  strcat(json, "]");
+
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Nearby orders fetched - building:%s range:%d", building, range);
+}
+
 void handle_request(int client_socket) {
   char buffer[BUFFER_SIZE];
   memset(buffer, 0, BUFFER_SIZE);
@@ -684,6 +791,10 @@ void handle_request(int client_socket) {
       body += 4;
       handle_login(client_socket, body);
     }
+  } else if (strstr(buffer, "GET /api/orders/nearby")) {
+    char *path_start = strstr(buffer, "GET /api/orders/nearby");
+    char *q = strstr(path_start, "?");
+    handle_get_nearby_orders(client_socket, q);
   } else if (strstr(buffer, "GET /api/orders")) {
     char *path_start = strstr(buffer, "GET /api/orders");
     char *q = strstr(path_start, "?");

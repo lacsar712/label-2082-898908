@@ -83,12 +83,12 @@ void get_orders_json(char *buf, const char *creator_filter,
     sprintf(item,
             "{\"id\":%d,\"creator\":\"%s\",\"worker\":\"%s\",\"package\":\"%"
             "s\",\"pickup\":\"%s\",\"delivery\":\"%s\",\"reward\":\"%s\","
-            "\"category\":\"%s\",\"status\":\"%s\"}",
+            "\"category\":\"%s\",\"status\":\"%s\",\"buildingTag\":\"%s\"}",
             orders[i].id, orders[i].creator,
             (strlen(orders[i].worker) > 0 ? orders[i].worker : ""),
             orders[i].package_info, orders[i].pickup_addr,
             orders[i].delivery_addr, orders[i].reward, orders[i].category,
-            orders[i].status);
+            orders[i].status, orders[i].building_tag);
     strcat(buf, item);
     first = 0;
   }
@@ -157,9 +157,9 @@ void get_users_json(char *buf) {
     char item[1024];
     sprintf(item,
             "{\"username\":\"%s\",\"realName\":\"%s\",\"major\":\"%s\","
-            "\"certified\":\"%s\"}",
+            "\"certified\":\"%s\",\"dormBuilding\":\"%s\"}",
             users[i].username, users[i].real_name, users[i].major,
-            users[i].certified);
+            users[i].certified, users[i].dorm_building);
     strcat(buf, item);
     first = 0;
   }

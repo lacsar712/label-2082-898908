@@ -82,7 +82,14 @@ document.addEventListener('DOMContentLoaded', () => {
         calcTotal: document.getElementById('calc-total'),
         calcSaveBtn: document.getElementById('calc-save-btn'),
         calcApplyBtn: document.getElementById('calc-apply-btn'),
-        calcSavedList: document.getElementById('calc-saved-list')
+        calcSavedList: document.getElementById('calc-saved-list'),
+        mutualOnlyMine: document.getElementById('mutual-only-mine'),
+        mutualBuildingSelect: document.getElementById('mutual-building-select'),
+        mutualAidList: document.getElementById('mutual-aid-list'),
+        mutualAidCurrentBuilding: document.getElementById('mutual-aid-current-building'),
+        buildingSelectModal: document.getElementById('building-select-modal'),
+        buildingSelectForm: document.getElementById('building-select-form'),
+        buildingSelectDorm: document.getElementById('building-select-dorm')
     };
 
     let auditFilter = 'pending';
@@ -249,6 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tab === 'blacklist') loadBlacklist();
             if (tab === 'price-calc') loadPriceCalculator();
             if (tab === 'route-plan') loadRoutePlan();
+            if (tab === 'mutual-aid') loadMutualAid();
         };
     });
 
@@ -504,6 +512,8 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.editProfileBtn.onclick = () => {
         elements.editRealname.value = currentUser.realName;
         elements.editMajor.value = currentUser.major;
+        const editDormBuilding = document.getElementById('edit-dorm-building');
+        if (editDormBuilding) editDormBuilding.value = currentUser.dormBuilding || '';
         elements.profileModal.classList.remove('hidden');
     };
 
@@ -514,11 +524,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     elements.profileForm.onsubmit = async (e) => {
         e.preventDefault();
+        const editDormBuilding = document.getElementById('edit-dorm-building');
         const payload = {
             username: currentUser.username,
             realName: elements.editRealname.value,
             major: elements.editMajor.value
         };
+        if (editDormBuilding && editDormBuilding.value) {
+            payload.dormBuilding = editDormBuilding.value;
+        }
         try {
             const resp = await fetch('/api/update_profile', {
                 method: 'POST',
@@ -528,6 +542,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (resp.ok) {
                 currentUser.realName = payload.realName;
                 currentUser.major = payload.major;
+                if (payload.dormBuilding) {
+                    currentUser.dormBuilding = payload.dormBuilding;
+                }
                 localStorage.setItem('user', JSON.stringify(currentUser));
                 loadProfile();
                 updateUIForLogin();
@@ -1829,6 +1846,157 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         initRouteMap();
+    }
+
+    async function loadMutualAid() {
+        if (!currentUser) return;
+
+        if (!currentUser.dormBuilding || currentUser.dormBuilding.trim() === '') {
+            elements.buildingSelectModal.classList.remove('hidden');
+            elements.mutualAidList.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #64748b; padding: 40px;">请先选择所属楼栋</div>';
+            return;
+        }
+
+        elements.buildingSelectModal.classList.add('hidden');
+
+        const building = currentUser.dormBuilding;
+        const onlyMine = elements.mutualOnlyMine.checked;
+        const selectedBuilding = elements.mutualBuildingSelect.value || building;
+
+        elements.mutualBuildingSelect.value = selectedBuilding;
+
+        const range = onlyMine ? 0 : 1;
+        const targetBuilding = onlyMine ? building : selectedBuilding;
+
+        elements.mutualAidCurrentBuilding.textContent = targetBuilding;
+
+        try {
+            const url = `/api/orders/nearby?building=${encodeURIComponent(targetBuilding)}&range=${range}`;
+            const [ordersResp, usersResp] = await Promise.all([
+                fetch(url),
+                fetch('/api/users')
+            ]);
+            const orders = await ordersResp.json();
+            const users = await usersResp.json();
+
+            users.forEach(u => {
+                userCertCache[u.username] = u.certified === 'yes';
+            });
+
+            const filtered = orders.filter(o => o.creator !== currentUser.username);
+            renderMutualAidOrders(filtered, building);
+        } catch (err) {
+            console.error('Failed to load mutual aid orders:', err);
+            elements.mutualAidList.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #64748b; padding: 40px;">加载失败</div>';
+        }
+    }
+
+    function parseBuildingNum(buildingStr) {
+        if (!buildingStr) return 0;
+        const match = buildingStr.match(/(\d+)/);
+        return match ? parseInt(match[1]) : 0;
+    }
+
+    function getBuildingRelation(orderBuilding, userBuilding) {
+        const userNum = parseBuildingNum(userBuilding);
+        const orderNum = parseBuildingNum(orderBuilding);
+        if (userNum === 0 || orderNum === 0) return { label: '', cls: '' };
+        const diff = Math.abs(orderNum - userNum);
+        if (diff === 0) return { label: '本楼', cls: 'same-building' };
+        if (diff === 1) return { label: '相邻楼', cls: 'adjacent-building' };
+        return { label: `${diff}栋之隔`, cls: 'nearby-building' };
+    }
+
+    function renderMutualAidOrders(orders, userBuilding) {
+        const container = elements.mutualAidList;
+        container.innerHTML = '';
+
+        if (orders.length === 0) {
+            container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #64748b; padding: 40px;">暂无附近楼栋的待接单任务</div>';
+            return;
+        }
+
+        orders.sort((a, b) => (a.buildingDist || 99) - (b.buildingDist || 99));
+
+        orders.forEach(order => {
+            const card = document.createElement('div');
+            card.className = `order-card ${order.status}`;
+
+            const statusMap = { 'pending': '待接单', 'accepted': '进行中', 'delivered': '待收货', 'completed': '已完成', 'cancelled': '已撤回' };
+
+            const rel = getBuildingRelation(order.buildingTag, userBuilding);
+
+            card.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span class="badge ${order.status}">${statusMap[order.status]}</span>
+                    <span style="color: #f43f5e; font-weight: 800; font-size: 1.2rem;">${order.reward}</span>
+                </div>
+                <div class="order-body">
+                    <h3>${order.package}</h3>
+                    <div class="info-row"><i class="fas fa-map-marker-alt"></i> <span>${order.pickup}</span></div>
+                    <div class="info-row"><i class="fas fa-door-open"></i> <span>送至: ${order.delivery}</span></div>
+                    <div class="info-row">
+                        <i class="fas fa-building"></i>
+                        <span>${order.buildingTag || '-'}</span>
+                        ${rel.label ? `<span class="building-tag-badge ${rel.cls}"><i class="fas fa-map-pin"></i> ${rel.label}</span>` : ''}
+                    </div>
+                    <div class="info-row"><i class="fas fa-user-circle"></i> <span>发布人: ${order.creator}</span> ${userCertCache[order.creator] ? '<span class="cert-badge inline-badge" title="认证用户"><i class="fas fa-check-circle"></i></span>' : ''}</div>
+                </div>
+                <div class="order-footer">
+                    ${order.status === 'pending' ?
+                    `<button class="btn-primary" onclick="updateStatus(${order.id}, 'accepted')">确认接单</button>` : ''}
+                </div>
+            `;
+
+            container.appendChild(card);
+        });
+    }
+
+    elements.buildingSelectForm.onsubmit = async (e) => {
+        e.preventDefault();
+        const dorm = elements.buildingSelectDorm.value;
+        if (!dorm) {
+            showToast('请选择楼栋');
+            return;
+        }
+
+        try {
+            const resp = await fetch('/api/update_profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: currentUser.username,
+                    dormBuilding: dorm
+                })
+            });
+            if (resp.ok) {
+                currentUser.dormBuilding = dorm;
+                localStorage.setItem('user', JSON.stringify(currentUser));
+                elements.buildingSelectModal.classList.add('hidden');
+                showToast(`已设置所属楼栋：${dorm}`);
+                loadMutualAid();
+            } else {
+                showToast('设置失败');
+            }
+        } catch (err) {
+            showToast('设置失败');
+        }
+    };
+
+    if (elements.mutualOnlyMine) {
+        elements.mutualOnlyMine.onchange = () => {
+            if (elements.mutualOnlyMine.checked) {
+                elements.mutualBuildingSelect.value = currentUser.dormBuilding || '';
+            }
+            loadMutualAid();
+        };
+    }
+
+    if (elements.mutualBuildingSelect) {
+        elements.mutualBuildingSelect.onchange = () => {
+            elements.mutualOnlyMine.checked = false;
+            loadMutualAid();
+        };
     }
 
     // Init

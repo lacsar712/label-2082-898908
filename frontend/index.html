@@ -70,6 +70,7 @@
                 <a href="#" class="nav-item active" data-tab="dashboard"><i class="fas fa-th-large"></i> 任务大厅</a>
                 <a href="#" class="nav-item" data-tab="my-orders"><i class="fas fa-clipboard-list"></i> 我的订单</a>
                 <a href="#" class="nav-item" data-tab="route-plan"><i class="fas fa-route"></i> 路线规划</a>
+                <a href="#" class="nav-item" data-tab="mutual-aid"><i class="fas fa-hands-helping"></i> 楼栋互助</a>
                 <a href="#" class="nav-item" data-tab="price-calc"><i class="fas fa-calculator"></i> 报价计算器</a>
                 <a href="#" class="nav-item" data-tab="post-task"><i class="fas fa-plus-circle"></i> 发布悬赏</a>
                 <a href="#" class="nav-item" data-tab="cert-apply" id="nav-cert-apply"><i class="fas fa-id-card"></i> 跑腿认证</a>
@@ -248,6 +249,45 @@
                         </div>
                     </div>
                 </div>
+            </section>
+
+            <!-- Mutual Aid -->
+            <section class="view-section hidden" id="mutual-aid-tab">
+                <div class="section-header">
+                    <h2><i class="fas fa-hands-helping"></i> 楼栋互助圈</h2>
+                    <div class="mutual-aid-controls">
+                        <label class="calc-toggle mutual-aid-only-toggle">
+                            <input type="checkbox" id="mutual-only-mine" checked>
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label"><i class="fas fa-home" style="color: var(--primary);"></i> 仅看本楼</span>
+                        </label>
+                        <div class="mutual-aid-building-switcher">
+                            <label>查看楼栋</label>
+                            <select id="mutual-building-select">
+                                <option value="1号楼">1号楼</option>
+                                <option value="2号楼">2号楼</option>
+                                <option value="3号楼">3号楼</option>
+                                <option value="4号楼">4号楼</option>
+                                <option value="5号楼">5号楼</option>
+                                <option value="6号楼">6号楼</option>
+                                <option value="7号楼">7号楼</option>
+                                <option value="8号楼">8号楼</option>
+                                <option value="9号楼">9号楼</option>
+                                <option value="10号楼">10号楼</option>
+                                <option value="11号楼">11号楼</option>
+                                <option value="12号楼">12号楼</option>
+                                <option value="13号楼">13号楼</option>
+                                <option value="14号楼">14号楼</option>
+                                <option value="15号楼">15号楼</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="mutual-aid-info-bar" id="mutual-aid-info-bar">
+                    <i class="fas fa-info-circle"></i>
+                    <span>当前查看：<strong id="mutual-aid-current-building">-</strong> 及相邻楼栋的待接单任务</span>
+                </div>
+                <div class="order-grid" id="mutual-aid-list"></div>
             </section>
 
             <!-- Price Calculator -->
@@ -560,6 +600,27 @@
                     <label>专业班级 <span style="color: #94a3b8; font-size: 0.85rem;">(最多20字)</span></label>
                     <input type="text" id="edit-major" maxlength="20" required>
                 </div>
+                <div class="form-group">
+                    <label>宿舍楼栋</label>
+                    <select id="edit-dorm-building">
+                        <option value="">未选择</option>
+                        <option value="1号楼">1号楼</option>
+                        <option value="2号楼">2号楼</option>
+                        <option value="3号楼">3号楼</option>
+                        <option value="4号楼">4号楼</option>
+                        <option value="5号楼">5号楼</option>
+                        <option value="6号楼">6号楼</option>
+                        <option value="7号楼">7号楼</option>
+                        <option value="8号楼">8号楼</option>
+                        <option value="9号楼">9号楼</option>
+                        <option value="10号楼">10号楼</option>
+                        <option value="11号楼">11号楼</option>
+                        <option value="12号楼">12号楼</option>
+                        <option value="13号楼">13号楼</option>
+                        <option value="14号楼">14号楼</option>
+                        <option value="15号楼">15号楼</option>
+                    </select>
+                </div>
                 <div style="display:flex; gap:10px; margin-top:20px;">
                     <button type="button" class="btn-outline"
                         onclick="document.getElementById('profile-modal').classList.add('hidden')">取消</button>
@@ -603,6 +664,37 @@
                         onclick="document.getElementById('audit-modal').classList.add('hidden')">取消</button>
                     <button type="submit" class="btn-primary" id="audit-submit-btn">确认审核</button>
                 </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="building-select-modal" class="overlay hidden">
+        <div class="auth-card" style="width: 420px;">
+            <h2><i class="fas fa-building"></i> 选择所属楼栋</h2>
+            <p style="color: #64748b; margin: 15px 0; font-size: 0.9rem;">首次使用楼栋互助功能，请确认你所在的宿舍楼栋，以便查看附近互助信息。</p>
+            <form id="building-select-form" class="auth-form" style="margin-top:20px;">
+                <div class="form-group">
+                    <label>所属宿舍楼栋</label>
+                    <select id="building-select-dorm" style="font-size: 1rem; padding: 14px;">
+                        <option value="">请选择楼栋</option>
+                        <option value="1号楼">1号楼</option>
+                        <option value="2号楼">2号楼</option>
+                        <option value="3号楼">3号楼</option>
+                        <option value="4号楼">4号楼</option>
+                        <option value="5号楼">5号楼</option>
+                        <option value="6号楼">6号楼</option>
+                        <option value="7号楼">7号楼</option>
+                        <option value="8号楼">8号楼</option>
+                        <option value="9号楼">9号楼</option>
+                        <option value="10号楼">10号楼</option>
+                        <option value="11号楼">11号楼</option>
+                        <option value="12号楼">12号楼</option>
+                        <option value="13号楼">13号楼</option>
+                        <option value="14号楼">14号楼</option>
+                        <option value="15号楼">15号楼</option>
+                    </select>
+                </div>
+                <button type="submit" class="submit-btn">确认选择</button>
             </form>
         </div>
     </div>
