@@ -6,3 +6,8 @@ services:
     ports:
       - "2082:2082"
     restart: always
+    volumes:
+      - app_data:/app
+
+volumes:
+  app_data:

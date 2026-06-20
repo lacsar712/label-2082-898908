@@ -2,6 +2,16 @@
 #define DATABASE_H
 
 #include "types.h"
+#include <stdio.h>
+
+int validate_header(int count, int max_count, int next_id);
+int backup_file(const char *main_path);
+int atomic_rename(const char *tmp_path, const char *main_path);
+int atomic_save_binary(const char *base_path, const void *count_ptr, const void *next_id_ptr,
+                       const void *data_ptr, size_t elem_size, int count);
+int load_with_fallback(const char *base_path, void *count_ptr, void *next_id_ptr,
+                       void *data_ptr, size_t elem_size, int max_count,
+                       const char *data_name);
 
 extern User users[MAX_USERS];
 extern int user_count;
