@@ -2,6 +2,7 @@
 #include "database.h"
 #include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -35,13 +36,19 @@ void url_decode(char *dst, const char *src) {
 }
 
 void parse_json_string(const char *body, const char *key, char *output, int max_len) {
-  char search[100];
-  snprintf(search, sizeof(search), "\"%s\"", key);
+  size_t key_len = strlen(key);
+  size_t search_size = key_len + 3;
+  char *search = (char *)malloc(search_size);
+  if (!search) return;
+  snprintf(search, search_size, "\"%s\"", key);
   char *p = strstr(body, search);
+  free(search);
   if (p) {
-    p += strlen(search);
-    while (*p == ' ' || *p == ':' || *p == '"')
+    p += search_size - 1;
+    while (*p && (isspace((unsigned char)*p) || *p == ':'))
       p++;
+    if (*p != '"') return;
+    p++;
     int i = 0;
     while (*p && *p != '"' && i < max_len - 1)
       output[i++] = *p++;
