@@ -1,9 +1,4 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // State management
-    let currentUser = JSON.parse(localStorage.getItem('user')) || null;
-    let currentFilter = '';
-    let myOrdersView = 'created'; // 'created' or 'accepted'
-
     const elements = {
         authOverlay: document.getElementById('auth-overlay'),
         mainApp: document.getElementById('main-app'),
@@ -91,24 +86,20 @@ document.addEventListener('DOMContentLoaded', () => {
         buildingSelectModal: document.getElementById('building-select-modal'),
         buildingSelectForm: document.getElementById('building-select-form'),
         buildingSelectDorm: document.getElementById('building-select-dorm'),
-
         eventBannerContainer: document.getElementById('event-banner-container'),
         weatherCardContainer: document.getElementById('weather-card-container'),
         navEventCalendar: document.getElementById('nav-event-calendar'),
         navEventManage: document.getElementById('nav-event-manage'),
         navNotifications: document.getElementById('nav-notifications'),
-
         calendarMonthLabel: document.getElementById('calendar-month-label'),
         calendarPrevMonth: document.getElementById('calendar-prev-month'),
         calendarNextMonth: document.getElementById('calendar-next-month'),
         calendarGrid: document.getElementById('calendar-grid'),
         calendarSubscribeBtn: document.getElementById('calendar-subscribe-btn'),
-
         eventDetailModal: document.getElementById('event-detail-modal'),
         eventDetailDate: document.getElementById('event-detail-date'),
         eventDetailList: document.getElementById('event-detail-list'),
         eventDetailClose: document.getElementById('event-detail-close'),
-
         eventManageList: document.getElementById('event-manage-list'),
         eventAddBtn: document.getElementById('event-add-btn'),
         eventEditModal: document.getElementById('event-edit-modal'),
@@ -120,7 +111,6 @@ document.addEventListener('DOMContentLoaded', () => {
         eventEditDesc: document.getElementById('event-edit-desc'),
         eventEditClose: document.getElementById('event-edit-close'),
         eventEditCancel: document.getElementById('event-edit-cancel'),
-
         subscribeModal: document.getElementById('subscribe-modal'),
         subscribeForm: document.getElementById('subscribe-form'),
         subscribeClose: document.getElementById('subscribe-close'),
@@ -129,11 +119,9 @@ document.addEventListener('DOMContentLoaded', () => {
         subscribeTypePromotion: document.getElementById('subscribe-type-promotion'),
         subscribeTypeHoliday: document.getElementById('subscribe-type-holiday'),
         subscribeTypeOther: document.getElementById('subscribe-type-other'),
-
         notificationList: document.getElementById('notification-list'),
         notificationMarkAllBtn: document.getElementById('notification-mark-all-btn'),
         notificationUnreadCount: document.getElementById('notification-unread-count'),
-
         msgConversationList: document.getElementById('msg-conversation-list'),
         msgSearchInput: document.getElementById('msg-search-input'),
         msgEmptyState: document.getElementById('msg-empty-state'),
@@ -146,7 +134,6 @@ document.addEventListener('DOMContentLoaded', () => {
         msgBackBtn: document.getElementById('msg-back-btn'),
         msgUnreadCount: document.getElementById('msg-unread-count'),
         msgSidebar: document.getElementById('msg-sidebar'),
-
         navDataDashboard: document.getElementById('nav-data-dashboard'),
         statTotalUsers: document.getElementById('stat-total-users'),
         statTotalOrders: document.getElementById('stat-total-orders'),
@@ -156,33 +143,29 @@ document.addEventListener('DOMContentLoaded', () => {
         trendLineChart: document.getElementById('trend-line-chart')
     };
 
-    let auditFilter = 'pending';
-    const userBlacklistCache = {};
-    let currentMsgThread = null;
-    let currentMsgPeer = null;
-    const msgDrafts = JSON.parse(localStorage.getItem('msg_drafts') || '{}');
-    const userRealNameCache = {};
-    let msgPollInterval = null;
+    function showToast(msg) {
+        const t = elements.toast;
+        t.textContent = msg;
+        t.classList.remove('hidden');
+        setTimeout(() => t.classList.add('hidden'), 3000);
+    }
 
-    let currentCalendarDate = new Date();
-    let allEvents = [];
-    let userSubscriptions = [];
-    const EVENT_TYPE_INFO = {
-        peak: { label: '快递高峰', icon: 'fa-boxes', color: '#ef4444', gradient: 'linear-gradient(135deg, #ef4444, #f97316)' },
-        promotion: { label: '驿站促销', icon: 'fa-tags', color: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #fbbf24)' },
-        holiday: { label: '寒暑假提醒', icon: 'fa-plane-departure', color: '#06b6d4', gradient: 'linear-gradient(135deg, #06b6d4, #3b82f6)' },
-        other: { label: '其他活动', icon: 'fa-calendar-star', color: '#8b5cf6', gradient: 'linear-gradient(135deg, #8b5cf6, #a78bfa)' }
-    };
+    Orders.init({
+        elements,
+        showToast,
+        openChatWith: (u) => window.openChatWith(u),
+        openRouteFromOrder: (o) => window.openRouteFromOrder(o),
+        toggleBlacklist: (u, b) => window.toggleBlacklist(u, b)
+    });
 
     // --- Authentication ---
     async function refreshUserInfo() {
-        if (!currentUser) return;
+        const user = AppState.getUser();
+        if (!user) return;
         try {
-            const resp = await fetch(`/api/user?username=${encodeURIComponent(currentUser.username)}`);
-            const data = await resp.json();
+            const { data } = await Api.getUser(user.username);
             if (data && data.username) {
-                currentUser = { ...currentUser, ...data };
-                localStorage.setItem('user', JSON.stringify(currentUser));
+                AppState.updateUser(data);
                 updateCertBadges();
                 updateAdminNav();
             }
@@ -192,7 +175,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateCertBadges() {
-        const isCertified = currentUser && currentUser.certified === 'yes';
+        const user = AppState.getUser();
+        const isCertified = user && user.certified === 'yes';
         if (elements.sidebarCertBadge) {
             elements.sidebarCertBadge.style.display = isCertified ? 'inline-flex' : 'none';
         }
@@ -202,29 +186,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateAdminNav() {
+        const isAdmin = AppState.isAdmin();
         if (elements.navCertAudit) {
-            const isAdmin = currentUser && currentUser.username === 'admin';
             elements.navCertAudit.style.display = isAdmin ? 'flex' : 'none';
         }
         if (elements.navEventManage) {
-            const isAdmin = currentUser && currentUser.username === 'admin';
             elements.navEventManage.style.display = isAdmin ? 'flex' : 'none';
         }
         if (elements.navDataDashboard) {
-            const isAdmin = currentUser && currentUser.username === 'admin';
             elements.navDataDashboard.style.display = isAdmin ? 'flex' : 'none';
         }
     }
 
     function updateUIForLogin() {
-        if (currentUser) {
+        const user = AppState.getUser();
+        if (user) {
             elements.authOverlay.classList.add('hidden');
             elements.mainApp.classList.remove('hidden');
-            elements.displayName.textContent = currentUser.realName;
-            elements.displayMajor.textContent = currentUser.major;
-            elements.welcomeName.textContent = currentUser.realName;
+            elements.displayName.textContent = user.realName;
+            elements.displayMajor.textContent = user.major;
+            elements.welcomeName.textContent = user.realName;
             const pkgCustomerDisp = document.getElementById('pkg-customer-disp');
-            if (pkgCustomerDisp) pkgCustomerDisp.textContent = currentUser.realName;
+            if (pkgCustomerDisp) pkgCustomerDisp.textContent = user.realName;
 
             updateCertBadges();
             updateAdminNav();
@@ -234,7 +217,6 @@ document.addEventListener('DOMContentLoaded', () => {
             loadWeatherCard();
             updateMsgUnreadCount();
 
-            // Go to dashboard by default to clear any previous account's tab state
             document.querySelector('[data-tab="dashboard"]').click();
         } else {
             elements.authOverlay.classList.remove('hidden');
@@ -261,22 +243,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const username = document.getElementById('login-user').value;
         const password = document.getElementById('login-pass').value;
         try {
-            const resp = await fetch('/api/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
+            const { resp, data } = await Api.login(username, password);
             if (!resp.ok) {
                 showToast('账号或密码错误');
                 return;
             }
-            const data = await resp.json();
             if (data.status === 'success') {
-                currentUser = data;
-                localStorage.setItem('user', JSON.stringify(data));
+                AppState.setUser(data);
                 updateUIForLogin();
                 showToast('登录成功！');
-                // Clear form
                 elements.loginForm.reset();
             } else {
                 showToast('账号或密码错误');
@@ -293,15 +268,9 @@ document.addEventListener('DOMContentLoaded', () => {
             major: document.getElementById('reg-major').value
         };
         try {
-            const resp = await fetch('/api/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const data = await resp.json();
+            const { resp, data } = await Api.register(payload);
             if (resp.ok && data.status === 'success') {
-                currentUser = data;
-                localStorage.setItem('user', JSON.stringify(data));
+                AppState.setUser(data);
                 updateUIForLogin();
                 showToast('注册成功！');
                 elements.registerForm.reset();
@@ -312,17 +281,12 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     elements.logoutBtn.onclick = () => {
-        localStorage.removeItem('user');
-        currentUser = null;
-        // Clear sensitive UI elements
+        AppState.setUser(null);
         elements.orderList.innerHTML = '';
         elements.myOrdersList.innerHTML = '';
         elements.loginForm.reset();
         elements.registerForm.reset();
-
-        // Ensure returning to login tab
         elements.tabLogin.click();
-
         updateUIForLogin();
     };
 
@@ -336,8 +300,8 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.viewSections.forEach(v => v.classList.add('hidden'));
             document.getElementById(`${tab}-tab`).classList.remove('hidden');
 
-            if (tab === 'dashboard') { fetchOrders(); loadEventBanners(); loadWeatherCard(); }
-            if (tab === 'my-orders') fetchMyOrders();
+            if (tab === 'dashboard') { Orders.fetchOrders(); loadEventBanners(); loadWeatherCard(); }
+            if (tab === 'my-orders') Orders.fetchMyOrders();
             if (tab === 'profile') loadProfile();
             if (tab === 'cert-apply') loadCertApplyForm();
             if (tab === 'cert-record') loadCertRecords();
@@ -356,142 +320,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Order Logic ---
-    async function fetchOrders() {
-        try {
-            let url = `/api/orders?category=${encodeURIComponent(currentFilter)}`;
-            const [ordersResp, usersResp] = await Promise.all([
-                fetch(url),
-                fetch('/api/users')
-            ]);
-            const orders = await ordersResp.json();
-            const users = await usersResp.json();
-
-            users.forEach(u => {
-                userCertCache[u.username] = u.certified === 'yes';
-            });
-
-            renderOrders(orders, elements.orderList);
-            elements.activeCount.textContent = orders.filter(o => o.status !== 'completed').length;
-        } catch (err) { console.error(err); }
-    }
-
-    async function fetchMyOrders() {
-        try {
-            let url = myOrdersView === 'created'
-                ? `/api/orders?creator=${currentUser.username}`
-                : `/api/orders?worker=${currentUser.username}`;
-            const [ordersResp, usersResp] = await Promise.all([
-                fetch(url),
-                fetch('/api/users')
-            ]);
-            const orders = await ordersResp.json();
-            const users = await usersResp.json();
-
-            users.forEach(u => {
-                userCertCache[u.username] = u.certified === 'yes';
-            });
-
-            renderOrders(orders, elements.myOrdersList, true);
-        } catch (err) { console.error(err); }
-    }
-
-    function renderOrders(orders, container, isMyOrders = false) {
-        container.innerHTML = '';
-        if (!isMyOrders) {
-            orders = orders.filter(o => o.status === 'pending' && o.creator !== currentUser.username);
-        }
-
-        if (orders.length === 0) {
-            container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #64748b; padding: 40px;">暂无订单数据</div>';
-            return;
-        }
-        orders.forEach(order => {
-            const card = document.createElement('div');
-            card.className = `order-card ${order.status}`;
-
-            const statusMap = { 'pending': '待接单', 'accepted': '进行中', 'delivered': '待收货', 'completed': '已完成', 'cancelled': '已撤回' };
-
-            card.innerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span class="badge ${order.status}">${statusMap[order.status]}</span>
-                    <span style="color: #f43f5e; font-weight: 800; font-size: 1.2rem;">${order.reward}</span>
-                </div>
-                <div class="order-body">
-                    <h3>${order.package}</h3>
-                    <div class="info-row"><i class="fas fa-map-marker-alt"></i> <span>${order.pickup}</span></div>
-                    <div class="info-row"><i class="fas fa-door-open"></i> <span>送至: ${order.delivery}</span></div>
-                    <div class="info-row"><i class="fas fa-user-circle"></i> <span>发布人: ${order.creator}</span> ${userCertCache[order.creator] ? '<span class="cert-badge inline-badge" title="认证用户"><i class="fas fa-check-circle"></i></span>' : ''}</div>
-                    ${order.worker ? `<div class="info-row"><i class="fas fa-hands-helping"></i> <span>接单人: ${order.worker}</span> ${userCertCache[order.worker] ? '<span class="cert-badge inline-badge" title="认证跑腿员"><i class="fas fa-check-circle"></i></span>' : ''}</div>` : ''}
-                </div>
-                <div class="order-footer">
-                    ${!isMyOrders && order.status === 'pending' ?
-                    `<button class="btn-primary" onclick="updateStatus(${order.id}, 'accepted')">确认接单</button>` : ''}
-
-                    ${isMyOrders && myOrdersView === 'accepted' && order.status === 'accepted' ?
-                    `<button class="btn-primary" onclick="updateStatus(${order.id}, 'delivered')">确认送达</button>` : ''}
-
-                    ${isMyOrders && myOrdersView === 'created' && (order.status === 'accepted' || order.status === 'delivered') ?
-                    `<button class="btn-primary" style="background:var(--accent);color:#fff" onclick="updateStatus(${order.id}, 'completed')">确认收货并支付 / 评价</button>` : ''}
-
-                    ${isMyOrders && myOrdersView === 'created' && order.status === 'pending' ?
-                    `<button class="btn-outline" style="color: #ef4444;" onclick="updateStatus(${order.id}, 'cancelled')"><i class="fas fa-undo"></i> 撤回发布</button>` : ''}
-                </div>
-                <div class="card-actions">
-                    <button class="block-action-btn view-route-btn" 
-                            data-pickup="${order.pickup}" 
-                            data-delivery="${order.delivery}"
-                            data-package="${order.package}"
-                            data-status="${order.status}">
-                        <i class="fas fa-route"></i> 查看路线
-                    </button>
-                    ${order.creator !== currentUser.username ? `
-                    <button class="msg-pm-btn" onclick="openChatWith('${order.creator}')">
-                        <i class="fas fa-comment-dots"></i> 私信发布人
-                    </button>
-                    <button class="block-action-btn ${userBlacklistCache[order.creator] ? 'blocked' : ''}" 
-                            onclick="toggleBlacklist('${order.creator}', this)">
-                        <i class="fas ${userBlacklistCache[order.creator] ? 'fa-check' : 'fa-ban'}"></i>
-                        ${userBlacklistCache[order.creator] ? '已拉黑发布人' : '拉黑发布人'}
-                    </button>` : ''}
-                    ${order.worker && order.worker !== currentUser.username ? `
-                    <button class="msg-pm-btn" onclick="openChatWith('${order.worker}')">
-                        <i class="fas fa-comment-dots"></i> 私信接单人
-                    </button>
-                    <button class="block-action-btn ${userBlacklistCache[order.worker] ? 'blocked' : ''}" 
-                            onclick="toggleBlacklist('${order.worker}', this)">
-                        <i class="fas ${userBlacklistCache[order.worker] ? 'fa-check' : 'fa-ban'}"></i>
-                        ${userBlacklistCache[order.worker] ? '已拉黑接单人' : '拉黑接单人'}
-                    </button>` : ''}
-                    ${isMyOrders && order.creator === currentUser.username && order.worker && order.worker !== currentUser.username ? `
-                    <button class="msg-pm-btn" onclick="openChatWith('${order.worker}')">
-                        <i class="fas fa-comment-dots"></i> 私信接单人
-                    </button>` : ''}
-                    ${isMyOrders && order.worker === currentUser.username && order.creator !== currentUser.username ? `
-                    <button class="msg-pm-btn" onclick="openChatWith('${order.creator}')">
-                        <i class="fas fa-comment-dots"></i> 私信发布人
-                    </button>` : ''}
-                </div>
-            `;
-
-            const routeBtn = card.querySelector('.view-route-btn');
-            if (routeBtn) {
-                routeBtn.onclick = () => {
-                    const orderData = {
-                        pickup: order.pickup,
-                        delivery: order.delivery,
-                        package: order.package,
-                        status: order.status
-                    };
-                    openRouteFromOrder(orderData);
-                };
-            }
-
-            container.appendChild(card);
-        });
-    }
+    window.updateStatus = async (id, status) => {
+        Orders.handleUpdateStatus(id, status);
+    };
 
     function addCertBadgeToName(username, nameEl) {
-        if (userCertCache[username]) {
+        if (AppState.getUserCert(username)) {
             const badge = document.createElement('span');
             badge.className = 'cert-badge inline-badge';
             badge.innerHTML = '<i class="fas fa-check-circle"></i>';
@@ -500,17 +334,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    const userCertCache = {};
-
     async function fetchUserCertStatus(username) {
-        if (userCertCache[username] !== undefined) {
-            return userCertCache[username];
+        if (AppState.getUserCert(username) !== undefined) {
+            return AppState.getUserCert(username);
         }
         try {
-            const resp = await fetch(`/api/user?username=${encodeURIComponent(username)}`);
-            const data = await resp.json();
-            userCertCache[username] = data.certified === 'yes';
-            return userCertCache[username];
+            const { data } = await Api.getUser(username);
+            const isCertified = data.certified === 'yes';
+            AppState.setUserCert(username, isCertified);
+            return isCertified;
         } catch (err) {
             console.error('Failed to fetch user cert status:', err);
             return false;
@@ -523,8 +355,8 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.filterPills.forEach(p => p.classList.remove('active'));
             pill.classList.add('active');
             let ds = pill.dataset.filter;
-            currentFilter = (ds === '全部') ? '' : ds;
-            fetchOrders();
+            AppState.setFilter((ds === '全部') ? '' : ds);
+            Orders.fetchOrders();
         };
     });
 
@@ -532,33 +364,30 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.showCreated.onclick = () => {
         elements.showCreated.classList.add('active');
         elements.showAccepted.classList.remove('active');
-        myOrdersView = 'created';
-        fetchMyOrders();
+        AppState.setMyOrdersView('created');
+        Orders.fetchMyOrders();
     };
     elements.showAccepted.onclick = () => {
         elements.showAccepted.classList.add('active');
         elements.showCreated.classList.remove('active');
-        myOrdersView = 'accepted';
-        fetchMyOrders();
+        AppState.setMyOrdersView('accepted');
+        Orders.fetchMyOrders();
     };
 
     // Post Order
     elements.orderForm.onsubmit = async (e) => {
         e.preventDefault();
+        const user = AppState.getUser();
         const payload = {
             package: document.getElementById('pkg-name').value,
             pickup: document.getElementById('pkg-pickup').value,
             delivery: document.getElementById('pkg-delivery').value,
             reward: document.getElementById('pkg-reward').value,
             size: document.getElementById('pkg-size').value,
-            creator: currentUser.username
+            creator: user.username
         };
         try {
-            const resp = await fetch('/api/orders', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+            const { resp } = await Api.createOrder(payload);
             if (resp.ok) {
                 showToast('发布成功！');
                 elements.orderForm.reset();
@@ -567,52 +396,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast('发布失败');
             }
         } catch (err) { showToast('发布失败'); }
-    }
-
-    // Status Update
-    window.updateStatus = async (id, status) => {
-        const payload = { id, status, worker: currentUser.username };
-        try {
-            const resp = await fetch('/api/update_status', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            if (!resp.ok) {
-                const data = await resp.json().catch(() => ({}));
-                showToast(data.message || '操作失败，请重试');
-                return;
-            }
-
-            if (status === 'accepted') showToast('接单成功，请尽快送达！');
-            else if (status === 'delivered') showToast('已送达，等待发单人确认。');
-            else if (status === 'completed') showToast('任务完成，感谢使用！');
-            else if (status === 'cancelled') showToast('已成功撤回该订单。');
-
-            if (document.getElementById('dashboard-tab').classList.contains('hidden')) fetchMyOrders();
-            else fetchOrders();
-        } catch (err) { showToast('操作失败'); }
     };
 
     // --- Profile ---
     async function loadProfile() {
-        elements.profileRealName.textContent = currentUser.realName;
-        elements.profileMajor.textContent = currentUser.major;
+        const user = AppState.getUser();
+        elements.profileRealName.textContent = user.realName;
+        elements.profileMajor.textContent = user.major;
 
-        // Fetch real stats from backend
         try {
-            // Count orders created by this user (发布任务)
-            const createdResp = await fetch(`/api/orders?creator=${currentUser.username}`);
-            const createdOrders = await createdResp.json();
+            const { data: createdOrders } = await Api.getOrders({ creator: user.username });
             document.getElementById('stat-created').textContent = createdOrders.length;
 
-            // Count orders completed as worker (代取成功)
-            const workerResp = await fetch(`/api/orders?worker=${currentUser.username}`);
-            const workerOrders = await workerResp.json();
+            const { data: workerOrders } = await Api.getOrders({ worker: user.username });
             const completedCount = workerOrders.filter(o => o.status === 'completed').length;
             document.getElementById('stat-delivered').textContent = completedCount;
 
-            // Credit score stays at 98 (static)
             document.getElementById('stat-credit').textContent = '98';
         } catch (err) {
             console.error('Failed to load profile stats:', err);
@@ -620,10 +419,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     elements.editProfileBtn.onclick = () => {
-        elements.editRealname.value = currentUser.realName;
-        elements.editMajor.value = currentUser.major;
+        const user = AppState.getUser();
+        elements.editRealname.value = user.realName;
+        elements.editMajor.value = user.major;
         const editDormBuilding = document.getElementById('edit-dorm-building');
-        if (editDormBuilding) editDormBuilding.value = currentUser.dormBuilding || '';
+        if (editDormBuilding) editDormBuilding.value = user.dormBuilding || '';
         elements.profileModal.classList.remove('hidden');
     };
 
@@ -634,9 +434,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     elements.profileForm.onsubmit = async (e) => {
         e.preventDefault();
+        const user = AppState.getUser();
         const editDormBuilding = document.getElementById('edit-dorm-building');
         const payload = {
-            username: currentUser.username,
+            username: user.username,
             realName: elements.editRealname.value,
             major: elements.editMajor.value
         };
@@ -644,18 +445,13 @@ document.addEventListener('DOMContentLoaded', () => {
             payload.dormBuilding = editDormBuilding.value;
         }
         try {
-            const resp = await fetch('/api/update_profile', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+            const { resp } = await Api.updateProfile(payload);
             if (resp.ok) {
-                currentUser.realName = payload.realName;
-                currentUser.major = payload.major;
-                if (payload.dormBuilding) {
-                    currentUser.dormBuilding = payload.dormBuilding;
-                }
-                localStorage.setItem('user', JSON.stringify(currentUser));
+                AppState.updateUser({
+                    realName: payload.realName,
+                    major: payload.major,
+                    ...(payload.dormBuilding ? { dormBuilding: payload.dormBuilding } : {})
+                });
                 loadProfile();
                 updateUIForLogin();
                 elements.profileModal.classList.add('hidden');
@@ -666,16 +462,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     elements.securityForm.onsubmit = async (e) => {
         e.preventDefault();
+        const user = AppState.getUser();
         const payload = {
-            username: currentUser.username,
+            username: user.username,
             password: elements.editPassword.value
         };
         try {
-            const resp = await fetch('/api/update_profile', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+            const { resp } = await Api.updateProfile(payload);
             if (resp.ok) {
                 elements.securityModal.classList.add('hidden');
                 showToast('新密码修改成功，请重新登录');
@@ -690,12 +483,12 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     async function loadCertApplyForm() {
+        const user = AppState.getUser();
         elements.certForm.reset();
         elements.certAppId.value = '';
 
         try {
-            const resp = await fetch(`/api/cert/apps?username=${encodeURIComponent(currentUser.username)}`);
-            const apps = await resp.json();
+            const { data: apps } = await Api.getCertApps(user.username);
 
             if (apps && apps.length > 0) {
                 const latestApp = apps.sort((a, b) => b.id - a.id)[0];
@@ -743,8 +536,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     elements.certForm.onsubmit = async (e) => {
         e.preventDefault();
+        const user = AppState.getUser();
         const payload = {
-            username: currentUser.username,
+            username: user.username,
             studentId: elements.certStudentId.value,
             dormBuilding: elements.certDorm.value,
             phone: elements.certPhone.value,
@@ -755,12 +549,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const resp = await fetch('/api/cert/submit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const data = await resp.json();
+            const { resp, data } = await Api.submitCert(payload);
             if (resp.ok && data.status === 'success') {
                 showToast('认证申请提交成功！');
                 await refreshUserInfo();
@@ -774,9 +563,9 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     async function loadCertRecords() {
+        const user = AppState.getUser();
         try {
-            const resp = await fetch(`/api/cert/apps?username=${encodeURIComponent(currentUser.username)}`);
-            const apps = await resp.json();
+            const { data: apps } = await Api.getCertApps(user.username);
             renderCertRecords(apps);
         } catch (err) {
             console.error('Failed to load cert records:', err);
@@ -824,7 +613,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         ` : ''}
                         ${app.status === 'rejected' ? `
                             <div class="cert-record-actions">
-                                <button class="btn-resubmit" onclick="resubmitCert(${app.id})">重新提交申请</button>
+                                <button class="btn-resubmit" data-action="resubmit-cert">重新提交申请</button>
                             </div>
                         ` : ''}
                     </div>
@@ -833,6 +622,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         elements.certRecordList.innerHTML = html;
+
+        elements.certRecordList.querySelectorAll('[data-action="resubmit-cert"]').forEach(btn => {
+            btn.onclick = () => {
+                document.querySelector('[data-tab="cert-apply"]').click();
+            };
+        });
     }
 
     window.resubmitCert = (appId) => {
@@ -841,14 +636,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Admin Audit ---
     elements.auditFilterPending.onclick = () => {
-        auditFilter = 'pending';
+        AppState.setAuditFilter('pending');
         elements.auditFilterPending.classList.add('active');
         elements.auditFilterAll.classList.remove('active');
         loadAuditList();
     };
 
     elements.auditFilterAll.onclick = () => {
-        auditFilter = '';
+        AppState.setAuditFilter('');
         elements.auditFilterAll.classList.add('active');
         elements.auditFilterPending.classList.remove('active');
         loadAuditList();
@@ -856,12 +651,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadAuditList() {
         try {
-            let url = '/api/cert/apps';
-            if (auditFilter) {
-                url += `?status=${encodeURIComponent(auditFilter)}`;
-            }
-            const resp = await fetch(url);
-            const apps = await resp.json();
+            const filter = AppState.getAuditFilter();
+            const { data: apps } = filter
+                ? await Api.getCertAppsByStatus(filter)
+                : await Api.getCertApps();
             renderAuditList(apps);
         } catch (err) {
             console.error('Failed to load audit list:', err);
@@ -925,10 +718,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     ` : ''}
                     ${app.status === 'pending' ? `
                         <div class="audit-actions">
-                            <button class="btn-approve" onclick="openAuditModal(${app.id}, 'approve')">
+                            <button class="btn-approve" data-action="open-audit" data-app-id="${app.id}" data-audit-action="approve">
                                 <i class="fas fa-check"></i> 通过
                             </button>
-                            <button class="btn-reject" onclick="openAuditModal(${app.id}, 'reject')">
+                            <button class="btn-reject" data-action="open-audit" data-app-id="${app.id}" data-audit-action="reject">
                                 <i class="fas fa-times"></i> 驳回
                             </button>
                         </div>
@@ -948,52 +741,54 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         elements.certAuditList.innerHTML = html;
+
+        elements.certAuditList.querySelectorAll('[data-action="open-audit"]').forEach(btn => {
+            btn.onclick = () => {
+                openAuditModal(parseInt(btn.dataset.appId), btn.dataset.auditAction);
+            };
+        });
     }
 
-    window.openAuditModal = (appId, action) => {
+    async function openAuditModal(appId, action) {
         elements.auditAppId.value = appId;
         elements.auditAction.value = action;
         elements.auditOpinion.value = '';
 
-        fetch(`/api/cert/apps`)
-            .then(r => r.json())
-            .then(apps => {
-                const app = apps.find(a => a.id === appId);
-                if (app) {
-                    const actionLabel = action === 'approve' ? '通过' : '驳回';
-                    elements.auditModal.querySelector('h2').innerHTML = `<i class="fas fa-user-check"></i> 认证审核 - ${actionLabel}`;
-                    elements.auditApplicantInfo.innerHTML = `
-                        <p style="margin-bottom: 8px;"><strong>申请人：</strong>${app.realName || app.username}</p>
-                        <p style="margin-bottom: 8px;"><strong>学号：</strong>${app.studentId || '-'}</p>
-                        <p><strong>申请说明：</strong>${app.description || '无'}</p>
-                    `;
-                    elements.auditSubmitBtn.textContent = `确认${actionLabel}`;
-                    elements.auditSubmitBtn.style.background = action === 'approve' ? '#10b981' : '#ef4444';
-                }
-                elements.auditModal.classList.remove('hidden');
-            })
-            .catch(err => {
-                console.error('Failed to fetch app details:', err);
-                elements.auditModal.classList.remove('hidden');
-            });
-    };
+        try {
+            const { data: apps } = await Api.getCertApps();
+            const app = apps.find(a => a.id === appId);
+            if (app) {
+                const actionLabel = action === 'approve' ? '通过' : '驳回';
+                elements.auditModal.querySelector('h2').innerHTML = `<i class="fas fa-user-check"></i> 认证审核 - ${actionLabel}`;
+                elements.auditApplicantInfo.innerHTML = `
+                    <p style="margin-bottom: 8px;"><strong>申请人：</strong>${app.realName || app.username}</p>
+                    <p style="margin-bottom: 8px;"><strong>学号：</strong>${app.studentId || '-'}</p>
+                    <p><strong>申请说明：</strong>${app.description || '无'}</p>
+                `;
+                elements.auditSubmitBtn.textContent = `确认${actionLabel}`;
+                elements.auditSubmitBtn.style.background = action === 'approve' ? '#10b981' : '#ef4444';
+            }
+            elements.auditModal.classList.remove('hidden');
+        } catch (err) {
+            console.error('Failed to fetch app details:', err);
+            elements.auditModal.classList.remove('hidden');
+        }
+    }
+
+    window.openAuditModal = openAuditModal;
 
     elements.auditForm.onsubmit = async (e) => {
         e.preventDefault();
+        const user = AppState.getUser();
         const payload = {
             id: parseInt(elements.auditAppId.value),
             action: elements.auditAction.value,
-            auditor: currentUser.username,
+            auditor: user.username,
             opinion: elements.auditOpinion.value
         };
 
         try {
-            const resp = await fetch('/api/cert/audit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const data = await resp.json();
+            const { resp, data } = await Api.auditCert(payload);
             if (resp.ok && data.status === 'success') {
                 showToast('审核成功！');
                 elements.auditModal.classList.add('hidden');
@@ -1010,12 +805,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Leaderboard ---
     async function loadLeaderboard() {
         try {
-            const [ordersResp, usersResp] = await Promise.all([
-                fetch('/api/orders?status=completed'),
-                fetch('/api/users')
+            const [{ data: orders }, { data: users }] = await Promise.all([
+                Api.getOrders({ status: 'completed' }),
+                Api.getUsers()
             ]);
-            const orders = await ordersResp.json();
-            const users = await usersResp.json();
 
             const workerStats = {};
             orders.forEach(order => {
@@ -1044,56 +837,68 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderLeaderboard(users) {
         const container = document.getElementById('leaderboard-list');
+        const currentUser = AppState.getUser();
         if (!users || users.length === 0) {
             container.innerHTML = '<div style="text-align: center; color: #64748b; padding: 40px;">暂无排行数据</div>';
             return;
         }
 
-        let html = '';
+        const frag = document.createDocumentFragment();
         users.forEach((user, index) => {
             const initial = (user.realName || user.username || 'U').charAt(0).toUpperCase();
             const isCertified = user.certified === 'yes';
+            const isBlocked = AppState.isUserBlacklisted(user.username);
+            const isCurrentUser = user.username === currentUser?.username;
 
-            html += `
-                <div class="leaderboard-item">
-                    <div class="leaderboard-rank">${index + 1}</div>
-                    <div class="leaderboard-avatar">${initial}</div>
-                    <div class="leaderboard-info">
-                        <div class="leaderboard-name">
-                            <span>${user.realName || user.username}</span>
-                            ${isCertified ? '<span class="cert-badge"><i class="fas fa-check-circle"></i> 已认证</span>' : ''}
-                        </div>
-                        <div class="leaderboard-major">${user.major || '-'}</div>
+            const item = document.createElement('div');
+            item.className = 'leaderboard-item';
+
+            item.innerHTML = `
+                <div class="leaderboard-rank">${index + 1}</div>
+                <div class="leaderboard-avatar">${initial}</div>
+                <div class="leaderboard-info">
+                    <div class="leaderboard-name">
+                        <span>${user.realName || user.username}</span>
+                        ${isCertified ? '<span class="cert-badge"><i class="fas fa-check-circle"></i> 已认证</span>' : ''}
                     </div>
-                    <div class="leaderboard-stats">
-                        <div class="leaderboard-count">${user.count}</div>
-                        <div class="leaderboard-label">完成单量</div>
-                    </div>
-                    ${user.username !== currentUser.username ? `
-                    <button class="block-action-btn ${userBlacklistCache[user.username] ? 'blocked' : ''}"
-                            onclick="toggleBlacklist('${user.username}', this)">
-                        <i class="fas ${userBlacklistCache[user.username] ? 'fa-check' : 'fa-ban'}"></i>
-                        ${userBlacklistCache[user.username] ? '已拉黑' : '拉黑'}
-                    </button>
-                    ` : ''}
+                    <div class="leaderboard-major">${user.major || '-'}</div>
+                </div>
+                <div class="leaderboard-stats">
+                    <div class="leaderboard-count">${user.count}</div>
+                    <div class="leaderboard-label">完成单量</div>
                 </div>
             `;
+
+            if (!isCurrentUser) {
+                const blockBtn = document.createElement('button');
+                blockBtn.className = `block-action-btn ${isBlocked ? 'blocked' : ''}`;
+                if (isBlocked) {
+                    blockBtn.innerHTML = '<i class="fas fa-check"></i> 已拉黑';
+                } else {
+                    blockBtn.innerHTML = '<i class="fas fa-ban"></i> 拉黑';
+                }
+                blockBtn.onclick = () => {
+                    window.toggleBlacklist(user.username, blockBtn);
+                };
+                item.appendChild(blockBtn);
+            }
+
+            frag.appendChild(item);
         });
 
-        container.innerHTML = html;
+        container.innerHTML = '';
+        container.appendChild(frag);
     }
 
     // --- Blacklist ---
     async function loadBlacklistCache() {
-        if (!currentUser) return;
+        const user = AppState.getUser();
+        if (!user) return;
         try {
-            const resp = await fetch(`/api/blacklist?blocker=${encodeURIComponent(currentUser.username)}`);
-            const list = await resp.json();
-            for (const key of Object.keys(userBlacklistCache)) {
-                delete userBlacklistCache[key];
-            }
+            const { data: list } = await Api.getBlacklist(user.username);
+            AppState.clearUserBlacklistCache();
             list.forEach(item => {
-                userBlacklistCache[item.blocked] = item;
+                AppState.setUserBlacklist(item.blocked, item);
             });
         } catch (err) {
             console.error('Failed to load blacklist cache:', err);
@@ -1101,10 +906,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function loadBlacklist() {
-        if (!currentUser) return;
+        const user = AppState.getUser();
+        if (!user) return;
         try {
-            const resp = await fetch(`/api/blacklist?blocker=${encodeURIComponent(currentUser.username)}`);
-            const list = await resp.json();
+            const { data: list } = await Api.getBlacklist(user.username);
             renderBlacklist(list);
         } catch (err) {
             console.error('Failed to load blacklist:', err);
@@ -1122,40 +927,50 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.blacklistCount.textContent = `共 ${list.length} 人`;
 
         const sortedList = list.sort((a, b) => b.id - a.id);
-        let html = '';
+        const frag = document.createDocumentFragment();
 
         sortedList.forEach(item => {
-            const initial = (item.blockedRealName || item.blocked || 'U').charAt(0).toUpperCase();
             const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(item.blocked)}`;
 
-            html += `
-                <div class="blacklist-item" data-username="${item.blocked}">
-                    <div class="blacklist-avatar">
-                        <img src="${avatarUrl}" alt="${item.blocked}">
+            const blkItem = document.createElement('div');
+            blkItem.className = 'blacklist-item';
+            blkItem.dataset.username = item.blocked;
+
+            blkItem.innerHTML = `
+                <div class="blacklist-avatar">
+                    <img src="${avatarUrl}" alt="${item.blocked}">
+                </div>
+                <div class="blacklist-info">
+                    <div class="blacklist-name">
+                        <span>${item.blockedRealName || item.blocked}</span>
                     </div>
-                    <div class="blacklist-info">
-                        <div class="blacklist-name">
-                            <span>${item.blockedRealName || item.blocked}</span>
-                        </div>
-                        <div class="blacklist-time">
-                            <i class="fas fa-clock"></i> 拉黑时间：${item.createTime || '-'}
-                        </div>
+                    <div class="blacklist-time">
+                        <i class="fas fa-clock"></i> 拉黑时间：${item.createTime || '-'}
                     </div>
-                    <button class="blacklist-remove-btn" onclick="removeFromBlacklist('${item.blocked}', ${item.id})">
-                        <i class="fas fa-user-plus"></i> 移出黑名单
-                    </button>
                 </div>
             `;
+
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'blacklist-remove-btn';
+            removeBtn.innerHTML = '<i class="fas fa-user-plus"></i> 移出黑名单';
+            removeBtn.onclick = () => {
+                window.removeFromBlacklist(item.blocked, item.id, removeBtn);
+            };
+            blkItem.appendChild(removeBtn);
+
+            frag.appendChild(blkItem);
         });
 
-        elements.blacklistList.innerHTML = html;
+        elements.blacklistList.innerHTML = '';
+        elements.blacklistList.appendChild(frag);
     }
 
     window.toggleBlacklist = async (username, btnEl) => {
-        if (!currentUser) return;
-        if (username === currentUser.username) return;
+        const user = AppState.getUser();
+        if (!user) return;
+        if (username === user.username) return;
 
-        const isBlocked = !!userBlacklistCache[username];
+        const isBlocked = AppState.isUserBlacklisted(username);
 
         try {
             if (isBlocked) {
@@ -1169,20 +984,13 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     async function addToBlacklist(username, btnEl = null) {
-        if (!currentUser) return;
+        const user = AppState.getUser();
+        if (!user) return;
 
         try {
-            const resp = await fetch('/api/blacklist/add', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    blocker: currentUser.username,
-                    blocked: username
-                })
-            });
-            const data = await resp.json();
+            const { resp, data } = await Api.addToBlacklist(user.username, username);
             if (resp.ok && data.status === 'success') {
-                userBlacklistCache[username] = { id: data.id, blocked: username };
+                AppState.setUserBlacklist(username, { id: data.id, blocked: username });
                 showToast('已加入黑名单');
                 if (btnEl) {
                     btnEl.classList.add('blocked');
@@ -1201,20 +1009,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     window.removeFromBlacklist = async (username, id = null, btnEl = null) => {
-        if (!currentUser) return;
+        const user = AppState.getUser();
+        if (!user) return;
 
         try {
-            const payload = { blocker: currentUser.username, blocked: username };
+            const payload = { blocker: user.username, blocked: username };
             if (id) payload.id = id;
 
-            const resp = await fetch('/api/blacklist/remove', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const data = await resp.json();
+            const { resp, data } = await Api.removeFromBlacklist(payload);
             if (resp.ok && data.status === 'success') {
-                delete userBlacklistCache[username];
+                AppState.setUserBlacklist(username, null);
                 showToast('已移出黑名单');
                 if (btnEl) {
                     btnEl.classList.remove('blocked');
@@ -1224,7 +1028,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     loadBlacklist();
                 }
                 if (!document.getElementById('dashboard-tab').classList.contains('hidden')) {
-                    fetchOrders();
+                    Orders.fetchOrders();
                 }
                 if (!document.getElementById('leaderboard-tab').classList.contains('hidden')) {
                     loadLeaderboard();
@@ -1237,13 +1041,6 @@ document.addEventListener('DOMContentLoaded', () => {
             throw err;
         }
     };
-
-    function showToast(msg) {
-        const t = elements.toast;
-        t.textContent = msg;
-        t.classList.remove('hidden');
-        setTimeout(() => t.classList.add('hidden'), 3000);
-    }
 
     // --- Price Calculator ---
     const STATION_COORDS = {
@@ -1319,20 +1116,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const rangeMax = Math.min(MAX_PRICE, clampedTotal + 1);
 
         return {
-            pickup,
-            delivery,
-            size,
-            isUrgent,
-            isRain,
-            distance: distance.toFixed(1),
-            distanceFee,
-            sizeFee,
-            urgentFee,
-            rainFee,
-            baseFee: BASE_FEE,
-            total: clampedTotal,
-            rangeMin: rangeMin.toFixed(2),
-            rangeMax: rangeMax.toFixed(2)
+            pickup, delivery, size, isUrgent, isRain,
+            distance: distance.toFixed(1), distanceFee, sizeFee, urgentFee, rainFee,
+            baseFee: BASE_FEE, total: clampedTotal,
+            rangeMin: rangeMin.toFixed(2), rangeMax: rangeMax.toFixed(2)
         };
     }
 
@@ -1343,23 +1130,11 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.calcBase.textContent = `¥${result.baseFee.toFixed(2)}`;
         elements.calcDistanceFee.textContent = `¥${result.distanceFee.toFixed(2)}`;
         elements.calcSizeFee.textContent = `¥${result.sizeFee.toFixed(2)}`;
-
-        if (result.isUrgent) {
-            elements.calcUrgentRow.style.display = 'flex';
-            elements.calcUrgentFee.textContent = `¥${result.urgentFee.toFixed(2)}`;
-        } else {
-            elements.calcUrgentRow.style.display = 'none';
-        }
-
-        if (result.isRain) {
-            elements.calcRainRow.style.display = 'flex';
-            elements.calcRainFee.textContent = `¥${result.rainFee.toFixed(2)}`;
-        } else {
-            elements.calcRainRow.style.display = 'none';
-        }
-
+        elements.calcUrgentRow.style.display = result.isUrgent ? 'flex' : 'none';
+        elements.calcUrgentFee.textContent = `¥${result.urgentFee.toFixed(2)}`;
+        elements.calcRainRow.style.display = result.isRain ? 'flex' : 'none';
+        elements.calcRainFee.textContent = `¥${result.rainFee.toFixed(2)}`;
         elements.calcTotal.textContent = `¥${result.total.toFixed(2)}`;
-
         const percent = ((result.total - MIN_PRICE) / (MAX_PRICE - MIN_PRICE)) * 100;
         elements.calcBarFill.style.width = `${percent}%`;
         elements.calcBarMarker.style.left = `${percent}%`;
@@ -1379,9 +1154,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function loadSavedSchemes() {
-        if (!currentUser) return;
-        const key = `price_schemes_${currentUser.username}`;
-        const schemes = JSON.parse(localStorage.getItem(key) || '[]');
+        const schemes = AppState.getSavedSchemes();
 
         if (schemes.length === 0) {
             elements.calcSavedList.innerHTML = `
@@ -1392,77 +1165,69 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        let html = '';
+        const frag = document.createDocumentFragment();
         schemes.forEach((scheme, idx) => {
             const sizeLabel = SIZE_FEE[scheme.size]?.label || scheme.size;
-            html += `
-                <div class="saved-scheme-card" onclick="applySavedScheme(${idx})">
-                    <div class="saved-scheme-header">
-                        <span class="saved-scheme-name">${scheme.name}</span>
-                        <button class="saved-scheme-delete" onclick="event.stopPropagation(); deleteSavedScheme(${idx})">
-                            <i class="fas fa-trash-alt"></i>
-                        </button>
-                    </div>
-                    <div class="saved-scheme-info">
-                        <div><i class="fas fa-store" style="width: 14px;"></i> ${scheme.pickup}</div>
-                        <div><i class="fas fa-home" style="width: 14px;"></i> ${scheme.delivery}</div>
-                        <div><i class="fas fa-box" style="width: 14px;"></i> ${sizeLabel}</div>
-                    </div>
-                    <div class="saved-scheme-price">
-                        <span>¥${scheme.total.toFixed(2)}</span>
-                        <div class="tags">
-                            ${scheme.isUrgent ? '<span class="saved-tag urgent">加急</span>' : ''}
-                            ${scheme.isRain ? '<span class="saved-tag rain">雨天</span>' : ''}
-                        </div>
-                    </div>
-                </div>
+            const card = document.createElement('div');
+            card.className = 'saved-scheme-card';
+
+            const header = document.createElement('div');
+            header.className = 'saved-scheme-header';
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'saved-scheme-name';
+            nameSpan.textContent = scheme.name;
+            const delBtn = document.createElement('button');
+            delBtn.className = 'saved-scheme-delete';
+            delBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
+            delBtn.onclick = (e) => { e.stopPropagation(); deleteSavedScheme(idx); };
+            header.appendChild(nameSpan);
+            header.appendChild(delBtn);
+
+            const info = document.createElement('div');
+            info.className = 'saved-scheme-info';
+            info.innerHTML = `
+                <div><i class="fas fa-store" style="width: 14px;"></i> ${scheme.pickup}</div>
+                <div><i class="fas fa-home" style="width: 14px;"></i> ${scheme.delivery}</div>
+                <div><i class="fas fa-box" style="width: 14px;"></i> ${sizeLabel}</div>
             `;
+
+            const price = document.createElement('div');
+            price.className = 'saved-scheme-price';
+            let tagsHtml = '';
+            if (scheme.isUrgent) tagsHtml += '<span class="saved-tag urgent">加急</span>';
+            if (scheme.isRain) tagsHtml += '<span class="saved-tag rain">雨天</span>';
+            price.innerHTML = `<span>¥${scheme.total.toFixed(2)}</span><div class="tags">${tagsHtml}</div>`;
+
+            card.appendChild(header);
+            card.appendChild(info);
+            card.appendChild(price);
+            card.onclick = () => applySavedScheme(idx);
+            frag.appendChild(card);
         });
-        elements.calcSavedList.innerHTML = html;
-    }
-
-    function getSavedSchemes() {
-        if (!currentUser) return [];
-        const key = `price_schemes_${currentUser.username}`;
-        return JSON.parse(localStorage.getItem(key) || '[]');
-    }
-
-    function saveSchemesToStorage(schemes) {
-        if (!currentUser) return;
-        const key = `price_schemes_${currentUser.username}`;
-        localStorage.setItem(key, JSON.stringify(schemes));
+        elements.calcSavedList.innerHTML = '';
+        elements.calcSavedList.appendChild(frag);
     }
 
     if (elements.calcSaveBtn) {
         elements.calcSaveBtn.onclick = () => {
-            if (!currentUser) {
-                showToast('请先登录');
-                return;
-            }
+            if (!AppState.getUser()) { showToast('请先登录'); return; }
             const result = calculatePrice();
             const schemeName = prompt('请输入方案名称（如：南门→13号楼常规）', '我的方案');
             if (!schemeName || !schemeName.trim()) return;
-
-            const schemes = getSavedSchemes();
-            schemes.unshift({
-                ...result,
-                name: schemeName.trim(),
-                createdAt: Date.now()
-            });
-
+            const schemes = AppState.getSavedSchemes();
+            schemes.unshift({ ...result, name: schemeName.trim(), createdAt: Date.now() });
             if (schemes.length > 10) schemes.pop();
-            saveSchemesToStorage(schemes);
+            AppState.saveSchemes(schemes);
             loadSavedSchemes();
             showToast('方案已保存！');
         };
     }
 
-    window.applySavedScheme = (idx) => {
-        if (!currentUser) return;
-        const schemes = getSavedSchemes();
+    function applySavedScheme(idx) {
+        if (!AppState.getUser()) return;
+        const schemes = AppState.getSavedSchemes();
         const scheme = schemes[idx];
         if (!scheme) return;
-
         elements.calcPickup.value = scheme.pickup;
         elements.calcDelivery.value = scheme.delivery;
         elements.calcSize.value = scheme.size;
@@ -1470,17 +1235,21 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.calcRain.checked = scheme.isRain;
         updateCalcDisplay(calculatePrice());
         showToast('已应用方案');
-    };
+    }
 
-    window.deleteSavedScheme = (idx) => {
-        if (!currentUser) return;
+    window.applySavedScheme = applySavedScheme;
+
+    function deleteSavedScheme(idx) {
+        if (!AppState.getUser()) return;
         if (!confirm('确定删除该方案？')) return;
-        const schemes = getSavedSchemes();
+        const schemes = AppState.getSavedSchemes();
         schemes.splice(idx, 1);
-        saveSchemesToStorage(schemes);
+        AppState.saveSchemes(schemes);
         loadSavedSchemes();
         showToast('已删除');
-    };
+    }
+
+    window.deleteSavedScheme = deleteSavedScheme;
 
     if (elements.calcApplyBtn) {
         elements.calcApplyBtn.onclick = () => {
@@ -1489,14 +1258,12 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('pkg-delivery').value = result.delivery;
             document.getElementById('pkg-reward').value = result.total.toFixed(2);
             document.getElementById('pkg-size').value = result.size;
-
             let pkgDesc = '';
             const sizeLabel = SIZE_FEE[result.size]?.label || '常规';
             pkgDesc += `${result.delivery.slice(0, -1)}${result.delivery.slice(-1)}${sizeLabel}包裹`;
             if (result.isUrgent) pkgDesc += '【加急】';
             if (result.isRain) pkgDesc += '【雨天】';
             document.getElementById('pkg-name').value = pkgDesc;
-
             document.querySelector('[data-tab="post-task"]').click();
             showToast('已带入发布表单，请确认后发布');
         };
@@ -1508,7 +1275,6 @@ document.addEventListener('DOMContentLoaded', () => {
         '顺丰速运-西门': { x: 60, y: 210, type: 'station', label: '顺丰速运' },
         '京东派-北区': { x: 280, y: 40, type: 'station', label: '京东派' },
         '中通圆通-东门': { x: 540, y: 210, type: 'station', label: '中通圆通' },
-
         '南门广场': { x: 300, y: 330, type: 'landmark', label: '南门广场', icon: 'fa-square' },
         '图书馆': { x: 300, y: 210, type: 'landmark', label: '图书馆', icon: 'fa-book' },
         '一食堂': { x: 170, y: 270, type: 'landmark', label: '第一食堂', icon: 'fa-utensils' },
@@ -1520,7 +1286,6 @@ document.addEventListener('DOMContentLoaded', () => {
         '北区广场': { x: 290, y: 80, type: 'landmark', label: '北区广场', icon: 'fa-tree' },
         '行政楼': { x: 300, y: 290, type: 'landmark', label: '行政楼', icon: 'fa-building' },
         '中心花园': { x: 240, y: 200, type: 'landmark', label: '中心花园', icon: 'fa-seedling' },
-
         '1号楼': { x: 200, y: 60, type: 'dorm', label: '1号楼' },
         '2号楼': { x: 230, y: 55, type: 'dorm', label: '2号楼' },
         '3号楼': { x: 260, y: 50, type: 'dorm', label: '3号楼' },
@@ -1544,7 +1309,6 @@ document.addEventListener('DOMContentLoaded', () => {
         { from: '行政楼', to: '图书馆', distance: 120, stairs: 0 },
         { from: '南门广场', to: '二食堂', distance: 150, stairs: 0 },
         { from: '南门广场', to: '一食堂', distance: 150, stairs: 0 },
-
         { from: '顺丰速运-西门', to: '一食堂', distance: 120, stairs: 20 },
         { from: '一食堂', to: '中心花园', distance: 80, stairs: 0 },
         { from: '中心花园', to: '图书馆', distance: 70, stairs: 0 },
@@ -1559,7 +1323,6 @@ document.addEventListener('DOMContentLoaded', () => {
         { from: '2号楼', to: '3号楼', distance: 35, stairs: 0 },
         { from: '3号楼', to: '北区广场', distance: 40, stairs: 0 },
         { from: '3号楼', to: '11号楼', distance: 70, stairs: 0 },
-
         { from: '中通圆通-东门', to: '二食堂', distance: 120, stairs: 20 },
         { from: '二食堂', to: '图书馆', distance: 100, stairs: 0 },
         { from: '二食堂', to: '教学楼B', distance: 130, stairs: 30 },
@@ -1573,22 +1336,18 @@ document.addEventListener('DOMContentLoaded', () => {
         { from: '5号楼', to: '4号楼', distance: 35, stairs: 0 },
         { from: '4号楼', to: '北区广场', distance: 50, stairs: 0 },
         { from: '5号楼', to: '12号楼', distance: 60, stairs: 0 },
-
         { from: '京东派-北区', to: '北区广场', distance: 50, stairs: 0 },
         { from: '北区广场', to: '15号楼', distance: 40, stairs: 0 },
         { from: '15号楼', to: '13号楼', distance: 70, stairs: 0 },
         { from: '15号楼', to: '教学楼B', distance: 80, stairs: 15 },
         { from: '北区广场', to: '教学楼A', distance: 100, stairs: 15 },
-
         { from: '教学楼A', to: '教学楼B', distance: 180, stairs: 0 },
         { from: '图书馆', to: '15号楼', distance: 120, stairs: 0 }
     ];
 
     function buildAdjacencyList() {
         const adj = {};
-        for (const node of Object.keys(ROUTE_NODES)) {
-            adj[node] = [];
-        }
+        for (const node of Object.keys(ROUTE_NODES)) adj[node] = [];
         for (const edge of ROUTE_EDGES) {
             adj[edge.from].push({ to: edge.to, distance: edge.distance, stairs: edge.stairs });
             adj[edge.to].push({ to: edge.from, distance: edge.distance, stairs: edge.stairs });
@@ -1598,31 +1357,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function dijkstra(start, end, weightType = 'distance') {
         const adj = buildAdjacencyList();
-        const distances = {};
-        const prev = {};
-        const visited = new Set();
-
-        for (const node of Object.keys(ROUTE_NODES)) {
-            distances[node] = Infinity;
-            prev[node] = null;
-        }
+        const distances = {}; const prev = {}; const visited = new Set();
+        for (const node of Object.keys(ROUTE_NODES)) { distances[node] = Infinity; prev[node] = null; }
         distances[start] = 0;
-
         const queue = [{ node: start, dist: 0 }];
-
         while (queue.length > 0) {
             queue.sort((a, b) => a.dist - b.dist);
             const { node: current } = queue.shift();
-
             if (visited.has(current)) continue;
             visited.add(current);
-
             if (current === end) break;
-
             for (const neighbor of adj[current]) {
                 const weight = weightType === 'distance' ? neighbor.distance : (neighbor.stairs * 10 + neighbor.distance * 0.5);
                 const alt = distances[current] + weight;
-
                 if (alt < distances[neighbor.to]) {
                     distances[neighbor.to] = alt;
                     prev[neighbor.to] = { node: current, distance: neighbor.distance, stairs: neighbor.stairs };
@@ -1630,30 +1377,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         }
-
-        const path = [];
-        let totalDistance = 0;
-        let totalStairs = 0;
-        let current = end;
-
+        const path = []; let totalDistance = 0; let totalStairs = 0; let current = end;
         while (current !== null && prev[current] !== undefined) {
             path.unshift(current);
-            if (prev[current]) {
-                totalDistance += prev[current].distance;
-                totalStairs += prev[current].stairs;
-            }
+            if (prev[current]) { totalDistance += prev[current].distance; totalStairs += prev[current].stairs; }
             current = prev[current] ? prev[current].node : null;
         }
-
-        if (path.length > 0) {
-            path.unshift(start);
-        }
-
+        if (path.length > 0) path.unshift(start);
         return { path, distance: totalDistance, stairs: totalStairs };
     }
-
-    let currentRouteType = 'fastest';
-    let currentRouteOrder = null;
 
     const routeElements = {
         pickup: document.getElementById('route-pickup'),
@@ -1672,1845 +1404,863 @@ document.addEventListener('DOMContentLoaded', () => {
         orderStatus: document.getElementById('route-order-status')
     };
 
-    function initRouteMap() {
-        drawBackgroundPaths();
-        drawLandmarks();
-        updateRoute();
-    }
-
-    function drawBackgroundPaths() {
-        const svgNs = 'http://www.w3.org/2000/svg';
-        routeElements.bgPaths.innerHTML = '';
-
-        for (const edge of ROUTE_EDGES) {
-            const from = ROUTE_NODES[edge.from];
-            const to = ROUTE_NODES[edge.to];
-            if (!from || !to) continue;
-
-            const line = document.createElementNS(svgNs, 'line');
-            line.setAttribute('x1', from.x);
-            line.setAttribute('y1', from.y);
-            line.setAttribute('x2', to.x);
-            line.setAttribute('y2', to.y);
-            line.setAttribute('class', 'route-bg-path');
-            routeElements.bgPaths.appendChild(line);
-        }
-    }
-
-    function drawLandmarks() {
-        const svgNs = 'http://www.w3.org/2000/svg';
-        routeElements.landmarks.innerHTML = '';
-
-        for (const [name, node] of Object.entries(ROUTE_NODES)) {
-            if (node.type !== 'landmark') continue;
-
-            const circle = document.createElementNS(svgNs, 'circle');
-            circle.setAttribute('cx', node.x);
-            circle.setAttribute('cy', node.y);
-            circle.setAttribute('r', 5);
-            circle.setAttribute('class', 'route-landmark-circle');
-            routeElements.landmarks.appendChild(circle);
-
-            const text = document.createElementNS(svgNs, 'text');
-            text.setAttribute('x', node.x);
-            text.setAttribute('y', node.y - 10);
-            text.setAttribute('class', 'route-landmark-label');
-            text.textContent = node.label;
-            routeElements.landmarks.appendChild(text);
-        }
-    }
-
-    function drawActiveRoute(path) {
-        const svgNs = 'http://www.w3.org/2000/svg';
-        routeElements.activePath.innerHTML = '';
-        routeElements.points.innerHTML = '';
-
-        if (path.length < 2) return;
-
-        let pathD = '';
-        path.forEach((nodeName, idx) => {
-            const node = ROUTE_NODES[nodeName];
-            if (!node) return;
-            if (idx === 0) {
-                pathD += `M ${node.x} ${node.y}`;
-            } else {
-                pathD += ` L ${node.x} ${node.y}`;
-            }
-        });
-
-        const pathEl = document.createElementNS(svgNs, 'path');
-        pathEl.setAttribute('d', pathD);
-        pathEl.setAttribute('class', 'route-active-path');
-        pathEl.style.animation = 'none';
-        routeElements.activePath.appendChild(pathEl);
-
-        pathEl.getBoundingClientRect();
-        pathEl.style.animation = '';
-
-        path.forEach((nodeName, idx) => {
-            const node = ROUTE_NODES[nodeName];
-            if (!node) return;
-
-            const isStart = idx === 0;
-            const isEnd = idx === path.length - 1;
-            const isLandmark = node.type === 'landmark';
-
-            if (isStart || isEnd || isLandmark) {
-                const circle = document.createElementNS(svgNs, 'circle');
-                circle.setAttribute('cx', node.x);
-                circle.setAttribute('cy', node.y);
-                circle.setAttribute('r', isStart || isEnd ? 9 : 6);
-
-                if (isStart) {
-                    circle.setAttribute('class', 'route-point-start pulse-animation');
-                } else if (isEnd) {
-                    circle.setAttribute('class', 'route-point-end pulse-animation');
-                } else {
-                    circle.setAttribute('class', 'route-point-landmark');
-                }
-
-                routeElements.points.appendChild(circle);
-
-                const label = document.createElementNS(svgNs, 'text');
-                label.setAttribute('x', node.x);
-                label.setAttribute('y', isStart ? node.y + 24 : (isEnd ? node.y - 16 : node.y - 12));
-                label.setAttribute('class', `route-point-label ${isStart ? 'start' : ''} ${isEnd ? 'end' : ''}`);
-                label.textContent = node.label;
-                routeElements.points.appendChild(label);
-            }
-        });
-    }
-
-    function renderRouteSections(path, result) {
-        if (path.length < 2) {
-            routeElements.sections.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 30px;">选择起点和终点查看路线详情</div>';
-            return;
-        }
-
-        let html = '';
-        let cumulativeDist = 0;
-        let cumulativeTime = 0;
-
-        const adj = buildAdjacencyList();
-        const edgeMap = {};
-        for (const edge of ROUTE_EDGES) {
-            edgeMap[`${edge.from}-${edge.to}`] = edge;
-            edgeMap[`${edge.to}-${edge.from}`] = edge;
-        }
-
-        for (let i = 0; i < path.length; i++) {
-            const nodeName = path[i];
-            const node = ROUTE_NODES[nodeName];
-            const isStart = i === 0;
-            const isEnd = i === path.length - 1;
-            const hasStairs = i > 0 && edgeMap[`${path[i - 1]}-${path[i]}`]?.stairs > 0;
-            const edge = i > 0 ? edgeMap[`${path[i - 1]}-${path[i]}`] : null;
-
-            if (edge) {
-                cumulativeDist += edge.distance;
-                cumulativeTime += Math.ceil(edge.distance / 80);
-            }
-
-            let itemClass = '';
-            let icon = 'fa-map-marker-alt';
-            let title = node.label;
-            let desc = '';
-
-            if (isStart) {
-                itemClass = 'start';
-                icon = 'fa-store';
-                title = `${node.label}（起点）`;
-                desc = '从取件驿站出发，开始配送';
-            } else if (isEnd) {
-                itemClass = 'end';
-                icon = 'fa-home';
-                title = `${node.label}（终点）`;
-                desc = '到达目的地，配送完成';
-            } else if (hasStairs) {
-                itemClass = 'stairs';
-                icon = 'fa-stairs';
-                title = `途经 ${node.label}`;
-                desc = `经过 ${edge.stairs} 级台阶，请注意慢行`;
-            } else {
-                icon = node.icon || 'fa-map-pin';
-                title = `途经 ${node.label}`;
-                desc = '沿主路直行';
-            }
-
-            const sectionDist = edge ? edge.distance : 0;
-            const sectionTime = edge ? Math.ceil(edge.distance / 80) : 0;
-
-            html += `
-                <div class="route-section-item ${itemClass}">
-                    <div class="route-section-icon">
-                        <i class="fas ${icon}"></i>
-                    </div>
-                    <div class="route-section-content">
-                        <div class="route-section-title">${title}</div>
-                        <div class="route-section-desc">${desc}</div>
-                        ${!isStart ? `
-                        <div class="route-section-meta">
-                            <span><i class="fas fa-walking"></i> 本段约 ${sectionDist}米</span>
-                            <span><i class="fas fa-clock"></i> 约 ${sectionTime}分钟</span>
-                            ${hasStairs ? `<span><i class="fas fa-stairs"></i> ${edge.stairs}级台阶</span>` : ''}
-                        </div>
-                        ` : ''}
-                    </div>
-                </div>
-            `;
-        }
-
-        html += `
-            <div class="route-section-item end" style="border-top: 1px dashed #e2e8f0; padding-top: 20px; margin-top: 10px;">
-                <div class="route-section-icon" style="background: linear-gradient(135deg, var(--primary), #8b5cf6); color: white;">
-                    <i class="fas fa-flag-checkered"></i>
-                </div>
-                <div class="route-section-content">
-                    <div class="route-section-title">全程总结</div>
-                    <div class="route-section-desc">共经过 ${path.length - 1} 个路段</div>
-                    <div class="route-section-meta">
-                        <span><i class="fas fa-walking"></i> 总距离 ${result.distance}米</span>
-                        <span><i class="fas fa-clock"></i> 总时间 ${Math.ceil(result.distance / 80)}分钟</span>
-                        <span><i class="fas fa-stairs"></i> 台阶 ${result.stairs}级</span>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        routeElements.sections.innerHTML = html;
-    }
-
-    function updateRoute() {
-        const pickup = routeElements.pickup?.value;
-        const delivery = routeElements.delivery?.value;
-
-        if (!pickup || !delivery) return;
-
-        const weightType = currentRouteType === 'fastest' ? 'distance' : 'stairs';
-        const result = dijkstra(pickup, delivery, weightType);
-
-        const distance = result.distance;
-        const timeMinutes = Math.ceil(distance / 80);
-
-        routeElements.distance.textContent = `${distance}米`;
-        routeElements.time.textContent = `${timeMinutes}分钟`;
-        routeElements.stairs.textContent = `${result.stairs}级`;
-
-        drawActiveRoute(result.path);
-        renderRouteSections(result.path, result);
-    }
-
-    document.querySelectorAll('.route-tab-btn').forEach(btn => {
-        btn.onclick = () => {
-            document.querySelectorAll('.route-tab-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            currentRouteType = btn.dataset.routeType;
-            updateRoute();
-        };
-    });
-
-    if (routeElements.pickup) {
-        routeElements.pickup.onchange = () => {
-            currentRouteOrder = null;
-            if (routeElements.orderBadge) {
-                routeElements.orderBadge.style.display = 'none';
-            }
-            updateRoute();
-        };
-        routeElements.delivery.onchange = () => {
-            currentRouteOrder = null;
-            if (routeElements.orderBadge) {
-                routeElements.orderBadge.style.display = 'none';
-            }
-            updateRoute();
-        };
-    }
-
-    window.openRouteFromOrder = (order) => {
-        if (!order) return;
-
-        currentRouteOrder = order;
-
-        const navItem = document.querySelector('[data-tab="route-plan"]');
-        if (navItem) navItem.click();
+    const LANDMARK_ICONS = {
+        dormitory: 'fas fa-bed',
+        teaching: 'fas fa-graduation-cap',
+        canteen: 'fas fa-utensils',
+        library: 'fas fa-book',
+        express: 'fas fa-box',
+        shop: 'fas fa-shopping-bag',
+        sports: 'fas fa-running',
+        gate: 'fas fa-door-open',
+        admin: 'fas fa-building'
     };
 
     function loadRoutePlan() {
         if (!routeElements.pickup || !routeElements.delivery) return;
-
-        if (currentRouteOrder) {
-            routeElements.pickup.value = currentRouteOrder.pickup;
-            routeElements.delivery.value = currentRouteOrder.delivery;
-
-            if (routeElements.orderBadge) {
-                routeElements.orderBadge.style.display = 'flex';
-                routeElements.orderName.textContent = currentRouteOrder.package;
-
-                const statusMap = { 'pending': '待接单', 'accepted': '进行中', 'delivered': '待收货', 'completed': '已完成', 'cancelled': '已撤回' };
-                routeElements.orderStatus.textContent = statusMap[currentRouteOrder.status] || currentRouteOrder.status;
-                routeElements.orderStatus.className = `badge ${currentRouteOrder.status}`;
-            }
-        } else {
-            if (routeElements.orderBadge) {
-                routeElements.orderBadge.style.display = 'none';
-            }
+        routeElements.pickup.innerHTML = '<option value="">ѡ�����</option>';
+        routeElements.delivery.innerHTML = '<option value="">ѡ���յ�</option>';
+        for (const node of Object.values(ROUTE_NODES)) {
+            const opt1 = document.createElement('option');
+            opt1.value = node.id;
+            opt1.textContent = node.name;
+            routeElements.pickup.appendChild(opt1);
+            const opt2 = document.createElement('option');
+            opt2.value = node.id;
+            opt2.textContent = node.name;
+            routeElements.delivery.appendChild(opt2);
         }
-
-        initRouteMap();
+        const recalc = () => {
+            const start = routeElements.pickup.value;
+            const end = routeElements.delivery.value;
+            if (!start || !end) {
+                routeElements.distance.textContent = '--';
+                routeElements.time.textContent = '--';
+                routeElements.stairs.textContent = '--';
+                if (routeElements.activePath) routeElements.activePath.setAttribute('d', '');
+                if (routeElements.sections) routeElements.sections.innerHTML = '';
+                return;
+            }
+            const adj = buildAdjacencyList();
+            const result = dijkstra(adj, start, end, 'stairs');
+            routeElements.distance.textContent = result.distance.toFixed(0) + ' m';
+            routeElements.time.textContent = Math.ceil(result.distance / 80) + ' ����';
+            routeElements.stairs.textContent = result.stairs > 0 ? result.stairs + ' ��' : '��';
+            drawRoute(result.path);
+            renderRouteSections(result.path, adj);
+        };
+        routeElements.pickup.onchange = recalc;
+        routeElements.delivery.onchange = recalc;
+        if (routeElements.map) {
+            drawLandmarks();
+            drawBackgroundEdges();
+        }
+        routeElements.orderBadge?.classList.add('hidden');
     }
 
-    async function loadMutualAid() {
-        if (!currentUser) return;
+    function drawLandmarks() {
+        if (!routeElements.landmarks) return;
+        routeElements.landmarks.innerHTML = '';
+        for (const node of Object.values(ROUTE_NODES)) {
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            g.setAttribute('transform', `translate(${node.x}, ${node.y})`);
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('r', '10');
+            circle.setAttribute('fill', node.type === 'gate' ? '#f59e0b' : (node.type === 'dormitory' ? '#6366f1' : (node.type === 'teaching' ? '#0ea5e9' : '#10b981')));
+            circle.setAttribute('stroke', '#fff');
+            circle.setAttribute('stroke-width', '2');
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('y', '4');
+            text.setAttribute('text-anchor', 'middle');
+            text.setAttribute('fill', '#fff');
+            text.setAttribute('font-size', '10');
+            text.setAttribute('font-weight', 'bold');
+            text.setAttribute('font-family', 'Font Awesome 6 Free');
+            text.textContent = getLandmarkIconChar(node.type);
+            const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            label.setAttribute('y', '24');
+            label.setAttribute('text-anchor', 'middle');
+            label.setAttribute('fill', '#475569');
+            label.setAttribute('font-size', '10');
+            label.textContent = node.name;
+            g.appendChild(circle);
+            g.appendChild(text);
+            g.appendChild(label);
+            routeElements.landmarks.appendChild(g);
+        }
+    }
 
-        if (!currentUser.dormBuilding || currentUser.dormBuilding.trim() === '') {
-            elements.buildingSelectModal.classList.remove('hidden');
-            elements.mutualAidList.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #64748b; padding: 40px;">请先选择所属楼栋</div>';
+    function getLandmarkIconChar(type) {
+        const map = { dormitory: '\uf236', teaching: '\uf19d', canteen: '\uf2e7', library: '\uf02d', express: '\uf466', shop: '\uf290', sports: '\uf70c', gate: '\uf52b', admin: '\uf1ad' };
+        return map[type] || '\uf041';
+    }
+
+    function drawBackgroundEdges() {
+        if (!routeElements.bgPaths) return;
+        routeElements.bgPaths.innerHTML = '';
+        for (const edge of ROUTE_EDGES) {
+            const a = ROUTE_NODES[edge.from];
+            const b = ROUTE_NODES[edge.to];
+            if (!a || !b) continue;
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', a.x);
+            line.setAttribute('y1', a.y);
+            line.setAttribute('x2', b.x);
+            line.setAttribute('y2', b.y);
+            line.setAttribute('stroke', edge.stairs > 0 ? '#fbbf24' : '#cbd5e1');
+            line.setAttribute('stroke-width', edge.stairs > 0 ? '2' : '1');
+            line.setAttribute('stroke-dasharray', edge.stairs > 0 ? '4,4' : 'none');
+            routeElements.bgPaths.appendChild(line);
+        }
+    }
+
+    function drawRoute(path) {
+        if (!routeElements.activePath || path.length < 2) {
+            if (routeElements.activePath) routeElements.activePath.setAttribute('d', '');
+            if (routeElements.points) routeElements.points.innerHTML = '';
             return;
         }
-
-        elements.buildingSelectModal.classList.add('hidden');
-
-        const building = currentUser.dormBuilding;
-        const onlyMine = elements.mutualOnlyMine.checked;
-        const selectedBuilding = elements.mutualBuildingSelect.value || building;
-
-        elements.mutualBuildingSelect.value = selectedBuilding;
-
-        const range = onlyMine ? 0 : 1;
-        const targetBuilding = onlyMine ? building : selectedBuilding;
-
-        elements.mutualAidCurrentBuilding.textContent = targetBuilding;
-
-        try {
-            const url = `/api/orders/nearby?building=${encodeURIComponent(targetBuilding)}&range=${range}`;
-            const [ordersResp, usersResp] = await Promise.all([
-                fetch(url),
-                fetch('/api/users')
-            ]);
-            const orders = await ordersResp.json();
-            const users = await usersResp.json();
-
-            users.forEach(u => {
-                userCertCache[u.username] = u.certified === 'yes';
-            });
-
-            const filtered = orders.filter(o => o.creator !== currentUser.username);
-            renderMutualAidOrders(filtered, building);
-        } catch (err) {
-            console.error('Failed to load mutual aid orders:', err);
-            elements.mutualAidList.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #64748b; padding: 40px;">加载失败</div>';
+        let d = '';
+        for (let i = 0; i < path.length; i++) {
+            const node = ROUTE_NODES[path[i]];
+            if (!node) continue;
+            d += (i === 0 ? 'M' : 'L') + node.x + ',' + node.y + ' ';
+        }
+        routeElements.activePath.setAttribute('d', d.trim());
+        routeElements.points.innerHTML = '';
+        for (let i = 0; i < path.length; i++) {
+            const node = ROUTE_NODES[path[i]];
+            if (!node) continue;
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', node.x);
+            circle.setAttribute('cy', node.y);
+            circle.setAttribute('r', i === 0 || i === path.length - 1 ? '7' : '4');
+            circle.setAttribute('fill', i === 0 ? '#10b981' : (i === path.length - 1 ? '#ef4444' : '#6366f1'));
+            circle.setAttribute('stroke', '#fff');
+            circle.setAttribute('stroke-width', '2');
+            routeElements.points.appendChild(circle);
         }
     }
 
-    function parseBuildingNum(buildingStr) {
-        if (!buildingStr) return 0;
-        const match = buildingStr.match(/(\d+)/);
-        return match ? parseInt(match[1]) : 0;
-    }
-
-    function getBuildingRelation(orderBuilding, userBuilding) {
-        const userNum = parseBuildingNum(userBuilding);
-        const orderNum = parseBuildingNum(orderBuilding);
-        if (userNum === 0 || orderNum === 0) return { label: '', cls: '' };
-        const diff = Math.abs(orderNum - userNum);
-        if (diff === 0) return { label: '本楼', cls: 'same-building' };
-        if (diff === 1) return { label: '相邻楼', cls: 'adjacent-building' };
-        return { label: `${diff}栋之隔`, cls: 'nearby-building' };
-    }
-
-    function renderMutualAidOrders(orders, userBuilding) {
-        const container = elements.mutualAidList;
-        container.innerHTML = '';
-
-        if (orders.length === 0) {
-            container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #64748b; padding: 40px;">暂无附近楼栋的待接单任务</div>';
-            return;
-        }
-
-        orders.sort((a, b) => (a.buildingDist || 99) - (b.buildingDist || 99));
-
-        orders.forEach(order => {
-            const card = document.createElement('div');
-            card.className = `order-card ${order.status}`;
-
-            const statusMap = { 'pending': '待接单', 'accepted': '进行中', 'delivered': '待收货', 'completed': '已完成', 'cancelled': '已撤回' };
-
-            const rel = getBuildingRelation(order.buildingTag, userBuilding);
-
-            card.innerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span class="badge ${order.status}">${statusMap[order.status]}</span>
-                    <span style="color: #f43f5e; font-weight: 800; font-size: 1.2rem;">${order.reward}</span>
+    function renderRouteSections(path, adj) {
+        if (!routeElements.sections) return;
+        routeElements.sections.innerHTML = '';
+        if (path.length < 2) return;
+        for (let i = 0; i < path.length - 1; i++) {
+            const from = ROUTE_NODES[path[i]];
+            const to = ROUTE_NODES[path[i + 1]];
+            if (!from || !to) continue;
+            const edge = adj[path[i]].find(n => n.to === path[i + 1]);
+            const item = document.createElement('div');
+            item.className = 'route-section-item';
+            const arrow = edge && edge.stairs > 0 ? '<i class="fas fa-stairs" style="color:#f59e0b"></i>' : '<i class="fas fa-walking" style="color:#6366f1"></i>';
+            item.innerHTML = `
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:0.9rem;">${arrow}</span>
+                    <span style="font-size:0.85rem;font-weight:500;">${from.name} �� ${to.name}</span>
                 </div>
-                <div class="order-body">
-                    <h3>${order.package}</h3>
-                    <div class="info-row"><i class="fas fa-map-marker-alt"></i> <span>${order.pickup}</span></div>
-                    <div class="info-row"><i class="fas fa-door-open"></i> <span>送至: ${order.delivery}</span></div>
-                    <div class="info-row">
-                        <i class="fas fa-building"></i>
-                        <span>${order.buildingTag || '-'}</span>
-                        ${rel.label ? `<span class="building-tag-badge ${rel.cls}"><i class="fas fa-map-pin"></i> ${rel.label}</span>` : ''}
-                    </div>
-                    <div class="info-row"><i class="fas fa-user-circle"></i> <span>发布人: ${order.creator}</span> ${userCertCache[order.creator] ? '<span class="cert-badge inline-badge" title="认证用户"><i class="fas fa-check-circle"></i></span>' : ''}</div>
-                </div>
-                <div class="order-footer">
-                    ${order.status === 'pending' ?
-                    `<button class="btn-primary" onclick="updateStatus(${order.id}, 'accepted')">确认接单</button>` : ''}
-                </div>
+                <div style="font-size:0.75rem;color:#64748b;">${edge ? edge.distance : 0}m${edge && edge.stairs > 0 ? ' �� Լ' + edge.stairs + '��' : ''}</div>
             `;
-
-            container.appendChild(card);
-        });
+            routeElements.sections.appendChild(item);
+        }
     }
 
-    elements.buildingSelectForm.onsubmit = async (e) => {
-        e.preventDefault();
-        const dorm = elements.buildingSelectDorm.value;
-        if (!dorm) {
-            showToast('请选择楼栋');
-            return;
+    window.openRouteFromOrder = (order) => {
+        if (!routeElements.pickup || !routeElements.delivery) {
+            elements.navItems.forEach(i => i.classList.remove('active'));
+            const routeNav = Array.from(elements.navItems).find(i => i.dataset.tab === 'route-plan');
+            routeNav?.classList.add('active');
+            elements.viewSections.forEach(v => v.classList.add('hidden'));
+            document.getElementById('route-plan-tab').classList.remove('hidden');
+            loadRoutePlan();
         }
-
-        try {
-            const resp = await fetch('/api/update_profile', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    username: currentUser.username,
-                    dormBuilding: dorm
-                })
-            });
-            if (resp.ok) {
-                currentUser.dormBuilding = dorm;
-                localStorage.setItem('user', JSON.stringify(currentUser));
-                elements.buildingSelectModal.classList.add('hidden');
-                showToast(`已设置所属楼栋：${dorm}`);
-                loadMutualAid();
-            } else {
-                showToast('设置失败');
-            }
-        } catch (err) {
-            showToast('设置失败');
+        const building = order.building || '';
+        const dest = order.destination || '';
+        const pickupNode = findNodeByNameOrBuilding(building);
+        const deliveryNode = findNodeByNameOrBuilding(dest);
+        if (pickupNode) routeElements.pickup.value = pickupNode;
+        if (deliveryNode) routeElements.delivery.value = deliveryNode;
+        if (routeElements.orderBadge) {
+            routeElements.orderBadge.classList.remove('hidden');
+            routeElements.orderBadge.innerHTML = `
+                <i class="fas fa-route"></i> ���Զ��� #${order.id}
+                <span class="close-x" onclick="document.getElementById('route-order-badge').classList.add('hidden')">&times;</span>
+            `;
         }
+        if (routeElements.orderName) routeElements.orderName.textContent = order.item || '';
+        if (routeElements.orderStatus) {
+            const statusMap = { posted: '���ӵ�', accepted: '���ʹ�', delivered: '��ȷ��', completed: '�����', cancelled: '��ȡ��' };
+            routeElements.orderStatus.textContent = statusMap[order.status] || order.status;
+            routeElements.orderStatus.className = 'status-badge status-' + (order.status || 'posted');
+        }
+        routeElements.pickup.dispatchEvent(new Event('change'));
+        elements.navItems.forEach(i => i.classList.remove('active'));
+        const routeNav = Array.from(elements.navItems).find(i => i.dataset.tab === 'route-plan');
+        routeNav?.classList.add('active');
+        elements.viewSections.forEach(v => v.classList.add('hidden'));
+        document.getElementById('route-plan-tab').classList.remove('hidden');
     };
 
-    if (elements.mutualOnlyMine) {
-        elements.mutualOnlyMine.onchange = () => {
-            if (elements.mutualOnlyMine.checked) {
-                elements.mutualBuildingSelect.value = currentUser.dormBuilding || '';
-            }
-            loadMutualAid();
-        };
+    function findNodeByNameOrBuilding(name) {
+        if (!name) return null;
+        for (const node of Object.values(ROUTE_NODES)) {
+            if (node.name === name || name.includes(node.name) || node.name.includes(name)) return node.id;
+        }
+        return null;
     }
 
-    if (elements.mutualBuildingSelect) {
-        elements.mutualBuildingSelect.onchange = () => {
-            elements.mutualOnlyMine.checked = false;
-            loadMutualAid();
-        };
-    }
-
-    // --- Event Calendar Functions ---
-    async function fetchAllEvents() {
+    // --- Mutual Aid ---
+    async function loadMutualAid() {
+        const mutualAidList = document.getElementById('mutual-aid-list');
+        if (!mutualAidList) return;
         try {
-            const resp = await fetch('/api/events');
-            allEvents = await resp.json();
-            return allEvents;
+            await Orders.fetchMutualAidOrders();
         } catch (err) {
-            console.error('Failed to fetch events:', err);
-            allEvents = [];
-            return [];
+            console.error('Failed to load mutual aid:', err);
+            if (mutualAidList) mutualAidList.innerHTML = '<p style="color:#ef4444;padding:20px;text-align:center;">���ػ�������ʧ��</p>';
         }
     }
 
-    async function fetchUserSubscriptions() {
-        if (!currentUser) return [];
+    // --- Event Calendar ---
+    function loadEventCalendar() {
+        const calendarEl = document.getElementById('event-calendar');
+        const eventListEl = document.getElementById('event-day-list');
+        if (!calendarEl) return;
+        const today = AppState.getCurrentCalendarDate() || new Date();
+        AppState.setCurrentCalendarDate(today);
+        renderCalendar(today);
+        renderEventsForDate(today);
+        const prevBtn = document.getElementById('cal-prev');
+        const nextBtn = document.getElementById('cal-next');
+        const todayBtn = document.getElementById('cal-today');
+        if (prevBtn) prevBtn.onclick = () => {
+            const d = AppState.getCurrentCalendarDate();
+            d.setMonth(d.getMonth() - 1);
+            AppState.setCurrentCalendarDate(new Date(d));
+            renderCalendar(AppState.getCurrentCalendarDate());
+        };
+        if (nextBtn) nextBtn.onclick = () => {
+            const d = AppState.getCurrentCalendarDate();
+            d.setMonth(d.getMonth() + 1);
+            AppState.setCurrentCalendarDate(new Date(d));
+            renderCalendar(AppState.getCurrentCalendarDate());
+        };
+        if (todayBtn) todayBtn.onclick = () => {
+            AppState.setCurrentCalendarDate(new Date());
+            renderCalendar(AppState.getCurrentCalendarDate());
+            renderEventsForDate(AppState.getCurrentCalendarDate());
+        };
+        loadAllEvents();
+    }
+
+    async function loadAllEvents() {
         try {
-            const resp = await fetch(`/api/subscriptions?username=${encodeURIComponent(currentUser.username)}`);
-            userSubscriptions = await resp.json();
-            return userSubscriptions;
+            const { data } = await Api.getEvents();
+            AppState.setAllEvents(data || []);
+            renderCalendar(AppState.getCurrentCalendarDate());
+            renderEventsForDate(AppState.getCurrentCalendarDate());
         } catch (err) {
-            console.error('Failed to fetch subscriptions:', err);
-            userSubscriptions = [];
-            return [];
+            console.error('Failed to load events:', err);
         }
     }
 
-    function isUserSubscribedToType(eventType) {
-        return userSubscriptions.some(s => s.eventType === eventType);
-    }
-
-    function getEventsByDate(dateStr) {
-        return allEvents.filter(e => e.date === dateStr);
-    }
-
-    function formatDate(date) {
-        const y = date.getFullYear();
-        const m = String(date.getMonth() + 1).padStart(2, '0');
-        const d = String(date.getDate()).padStart(2, '0');
-        return `${y}-${m}-${d}`;
-    }
-
-    function parseDate(dateStr) {
-        const [y, m, d] = dateStr.split('-').map(Number);
-        return new Date(y, m - 1, d);
-    }
-
-    function isSameDay(d1, d2) {
-        return d1.getFullYear() === d2.getFullYear() &&
-               d1.getMonth() === d2.getMonth() &&
-               d1.getDate() === d2.getDate();
-    }
-
-    function getDaysDiff(date1, date2) {
-        const oneDay = 24 * 60 * 60 * 1000;
-        const d1 = new Date(date1.getFullYear(), date1.getMonth(), date1.getDate());
-        const d2 = new Date(date2.getFullYear(), date2.getMonth(), date2.getDate());
-        return Math.round((d2 - d1) / oneDay);
-    }
-
-    // --- Event Banners (Dashboard) ---
-    async function loadEventBanners() {
-        if (!elements.eventBannerContainer) return;
-
-        await Promise.all([fetchAllEvents(), fetchUserSubscriptions()]);
-
-        const today = new Date();
-        const upcomingEvents = allEvents
-            .filter(e => {
-                const eventDate = parseDate(e.date);
-                const diff = getDaysDiff(today, eventDate);
-                return diff >= 0 && diff <= 3 && isUserSubscribedToType(e.type);
-            })
-            .sort((a, b) => {
-                const da = parseDate(a.date);
-                const db = parseDate(b.date);
-                return da - db;
-            })
-            .slice(0, 3);
-
-        if (upcomingEvents.length === 0) {
-            elements.eventBannerContainer.innerHTML = '';
-            elements.eventBannerContainer.style.display = 'none';
-            return;
-        }
-
-        elements.eventBannerContainer.style.display = 'block';
-        let html = '';
-
-        upcomingEvents.forEach(event => {
-            const typeInfo = EVENT_TYPE_INFO[event.type] || EVENT_TYPE_INFO.other;
-            const eventDate = parseDate(event.date);
-            const diff = getDaysDiff(today, eventDate);
-            let timeLabel = '';
-            if (diff === 0) timeLabel = '今天';
-            else if (diff === 1) timeLabel = '明天';
-            else timeLabel = `${diff}天后`;
-
-            html += `
-                <div class="event-banner event-banner-${event.type}">
-                    <div class="event-banner-icon">
-                        <i class="fas ${typeInfo.icon}"></i>
-                    </div>
-                    <div class="event-banner-content">
-                        <div class="event-banner-title">
-                            <span class="event-banner-tag">${typeInfo.label}</span>
-                            ${event.title}
-                        </div>
-                        <div class="event-banner-desc">
-                            <i class="fas fa-calendar-day"></i> ${event.date}（${timeLabel}）
-                            <span style="margin-left: 12px;">${event.description.substring(0, 40)}${event.description.length > 40 ? '...' : ''}</span>
-                        </div>
-                    </div>
-                    <button class="event-banner-close" onclick="this.parentElement.style.display='none'">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-            `;
-        });
-
-        elements.eventBannerContainer.innerHTML = html;
-    }
-
-    // --- Calendar Rendering ---
-    async function loadEventCalendar() {
-        await Promise.all([fetchAllEvents(), fetchUserSubscriptions()]);
-        renderCalendar();
-    }
-
-    function renderCalendar() {
-        const year = currentCalendarDate.getFullYear();
-        const month = currentCalendarDate.getMonth();
-        elements.calendarMonthLabel.textContent = `${year}年${month + 1}月`;
-
+    function renderCalendar(date) {
+        const calendarEl = document.getElementById('event-calendar');
+        if (!calendarEl) return;
+        const year = date.getFullYear();
+        const month = date.getMonth();
+        document.getElementById('cal-title').textContent = year + ' �� ' + (month + 1) + ' ��';
         const firstDay = new Date(year, month, 1);
         const lastDay = new Date(year, month + 1, 0);
         const startWeekday = firstDay.getDay();
         const daysInMonth = lastDay.getDate();
-
         const today = new Date();
-        let html = `
-            <div class="calendar-weekday">日</div>
-            <div class="calendar-weekday">一</div>
-            <div class="calendar-weekday">二</div>
-            <div class="calendar-weekday">三</div>
-            <div class="calendar-weekday">四</div>
-            <div class="calendar-weekday">五</div>
-            <div class="calendar-weekday">六</div>
-        `;
-
-        for (let i = 0; i < startWeekday; i++) {
-            html += `<div class="calendar-day empty"></div>`;
-        }
-
-        for (let day = 1; day <= daysInMonth; day++) {
-            const date = new Date(year, month, day);
-            const dateStr = formatDate(date);
-            const dayEvents = getEventsByDate(dateStr);
-            const isToday = isSameDay(date, today);
+        const todayStr = formatDateStr(today);
+        let html = '<div class="cal-weekday">��</div><div class="cal-weekday">һ</div><div class="cal-weekday">��</div><div class="cal-weekday">��</div><div class="cal-weekday">��</div><div class="cal-weekday">��</div><div class="cal-weekday">��</div>';
+        for (let i = 0; i < startWeekday; i++) html += '<div class="cal-day cal-empty"></div>';
+        const events = AppState.getAllEvents() || [];
+        for (let d = 1; d <= daysInMonth; d++) {
+            const curDate = new Date(year, month, d);
+            const dStr = formatDateStr(curDate);
+            const dayEvents = events.filter(e => e.date === dStr);
+            const isToday = dStr === todayStr;
             const hasEvents = dayEvents.length > 0;
+            let cls = 'cal-day';
+            if (isToday) cls += ' cal-today';
+            if (hasEvents) cls += ' cal-has-event';
+            html += `<div class="${cls}" data-date="${dStr}"><div class="cal-num">${d}</div>${hasEvents ? `<div class="cal-dot" title="${dayEvents.length}���"></div>` : ''}</div>`;
+        }
+        calendarEl.innerHTML = html;
+        calendarEl.querySelectorAll('.cal-day[data-date]').forEach(el => {
+            el.onclick = () => {
+                const [y, m, day] = el.dataset.date.split('-').map(Number);
+                AppState.setCurrentCalendarDate(new Date(y, m - 1, day));
+                renderEventsForDate(AppState.getCurrentCalendarDate());
+            };
+        });
+    }
 
-            let dotsHtml = '';
-            if (hasEvents) {
-                const displayedTypes = [...new Set(dayEvents.slice(0, 4).map(e => e.type))];
-                dotsHtml = '<div class="calendar-event-dots">';
-                displayedTypes.forEach(type => {
-                    const color = (EVENT_TYPE_INFO[type] || EVENT_TYPE_INFO.other).color;
-                    dotsHtml += `<span class="calendar-event-dot dot-${type}" style="background:${color};"></span>`;
-                });
-                dotsHtml += '</div>';
-            }
+    function formatDateStr(d) {
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
 
-            html += `
-                <div class="calendar-day ${isToday ? 'today' : ''} ${hasEvents ? 'has-event' : ''}" 
-                     data-date="${dateStr}" 
-                     onclick="${hasEvents ? `showEventDetail('${dateStr}')` : ''}">
-                    <span class="calendar-day-number">${day}</span>
-                    ${dotsHtml}
+    function renderEventsForDate(date) {
+        const eventListEl = document.getElementById('event-day-list');
+        if (!eventListEl) return;
+        const dStr = formatDateStr(date);
+        const events = (AppState.getAllEvents() || []).filter(e => e.date === dStr);
+        if (events.length === 0) {
+            eventListEl.innerHTML = '<p style="color:#64748b;padding:20px;text-align:center;">�������޻</p>';
+            return;
+        }
+        const frag = document.createDocumentFragment();
+        for (const ev of events) {
+            const card = document.createElement('div');
+            card.className = 'event-card';
+            const typeColors = { academic: '#3b82f6', cultural: '#a855f7', sports: '#f59e0b', volunteer: '#10b981', other: '#6b7280' };
+            const typeLabels = { academic: 'ѧ��', cultural: '����', sports: '����', volunteer: '־Ը', other: '����' };
+            card.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                    <div>
+                        <h4 style="margin:0 0 8px;font-size:1rem;color:#0f172a;">${ev.title}</h4>
+                        <p style="margin:4px 0;font-size:0.85rem;color:#475569;"><i class="fas fa-clock" style="color:#6366f1;"></i> ${ev.time || '--'}</p>
+                        <p style="margin:4px 0;font-size:0.85rem;color:#475569;"><i class="fas fa-map-marker-alt" style="color:#ef4444;"></i> ${ev.location || '--'}</p>
+                        <p style="margin:4px 0;font-size:0.85rem;color:#475569;"><i class="fas fa-user" style="color:#10b981;"></i> ${ev.organizer || '--'}</p>
+                        ${ev.description ? `<p style="margin:8px 0 0;font-size:0.8rem;color:#64748b;">${ev.description}</p>` : ''}
+                    </div>
+                    <span class="event-type-tag" style="background:${typeColors[ev.type] || '#6b7280'}">${typeLabels[ev.type] || '����'}</span>
                 </div>
             `;
+            frag.appendChild(card);
         }
-
-        elements.calendarGrid.innerHTML = html;
+        eventListEl.innerHTML = '';
+        eventListEl.appendChild(frag);
     }
 
-    if (elements.calendarPrevMonth) {
-        elements.calendarPrevMonth.onclick = () => {
-            currentCalendarDate.setMonth(currentCalendarDate.getMonth() - 1);
-            renderCalendar();
-        };
-    }
-
-    if (elements.calendarNextMonth) {
-        elements.calendarNextMonth.onclick = () => {
-            currentCalendarDate.setMonth(currentCalendarDate.getMonth() + 1);
-            renderCalendar();
-        };
-    }
-
-    // --- Event Detail Modal ---
-    window.showEventDetail = (dateStr) => {
-        const dayEvents = getEventsByDate(dateStr);
-        elements.eventDetailDate.textContent = dateStr;
-
-        if (dayEvents.length === 0) {
-            elements.eventDetailList.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">当日暂无活动</div>';
-        } else {
-            let html = '';
-            dayEvents.forEach(event => {
-                const typeInfo = EVENT_TYPE_INFO[event.type] || EVENT_TYPE_INFO.other;
-                html += `
-                    <div class="event-detail-item event-detail-${event.type}">
-                        <div class="event-detail-header">
-                            <span class="event-detail-type" style="background:${typeInfo.gradient};">
-                                <i class="fas ${typeInfo.icon}"></i> ${typeInfo.label}
-                            </span>
-                            ${currentUser && currentUser.username === 'admin' ? `
-                                <div class="event-detail-actions">
-                                    <button class="event-detail-edit-btn" onclick="event.stopPropagation(); openEventEditModal(${event.id})">
-                                        <i class="fas fa-edit"></i> 编辑
-                                    </button>
-                                    <button class="event-detail-delete-btn" onclick="event.stopPropagation(); deleteEvent(${event.id})">
-                                        <i class="fas fa-trash"></i> 删除
-                                    </button>
-                                </div>
-                            ` : ''}
-                        </div>
-                        <h3 class="event-detail-title">${event.title}</h3>
-                        <p class="event-detail-description">${event.description}</p>
-                        <div class="event-detail-meta">
-                            <span><i class="fas fa-user"></i> 发布人：${event.createdBy || 'admin'}</span>
-                            <span><i class="fas fa-clock"></i> ${event.createTime || '-'}</span>
+    // --- Event Management (Admin) ---
+    async function loadEventManage() {
+        const eventManageList = document.getElementById('event-manage-list');
+        if (!eventManageList) return;
+        const user = AppState.getUser();
+        if (!AppState.isAdmin()) {
+            eventManageList.innerHTML = '<p style="color:#ef4444;padding:20px;text-align:center;">������Ա�ɷ���</p>';
+            return;
+        }
+        try {
+            const { data } = await Api.getEvents();
+            if (!data || data.length === 0) {
+                eventManageList.innerHTML = '<p style="color:#64748b;padding:20px;text-align:center;">���޻</p>';
+                return;
+            }
+            const typeLabels = { academic: 'ѧ��', cultural: '����', sports: '����', volunteer: '־Ը', other: '����' };
+            const frag = document.createDocumentFragment();
+            for (const ev of data) {
+                const card = document.createElement('div');
+                card.className = 'event-card';
+                const delBtn = document.createElement('button');
+                delBtn.className = 'btn-danger btn-small';
+                delBtn.style.marginLeft = '8px';
+                delBtn.innerHTML = '<i class="fas fa-trash"></i> ɾ��';
+                delBtn.onclick = async () => {
+                    if (!confirm('ȷ��ɾ���û��')) return;
+                    try {
+                        await Api.deleteEvent(ev.id);
+                        showToast('���ɾ��');
+                        loadEventManage();
+                    } catch (err) { showToast('ɾ��ʧ��'); }
+                };
+                card.innerHTML = `
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                        <div>
+                            <h4 style="margin:0 0 8px;font-size:1rem;color:#0f172a;">${ev.title}</h4>
+                            <p style="margin:4px 0;font-size:0.85rem;color:#475569;">?? ${ev.date} ${ev.time || ''}</p>
+                            <p style="margin:4px 0;font-size:0.85rem;color:#475569;">?? ${ev.location || '--'}</p>
+                            <p style="margin:4px 0;font-size:0.85rem;color:#475569;">?? ${ev.organizer || '--'}</p>
+                            <span class="event-type-tag">${typeLabels[ev.type] || '����'}</span>
                         </div>
                     </div>
                 `;
-            });
-            elements.eventDetailList.innerHTML = html;
-        }
-
-        elements.eventDetailModal.classList.remove('hidden');
-    };
-
-    if (elements.eventDetailClose) {
-        elements.eventDetailClose.onclick = () => {
-            elements.eventDetailModal.classList.add('hidden');
-        };
-    }
-
-    // --- Event Manage (Admin) ---
-    async function loadEventManage() {
-        if (!elements.eventManageList) return;
-        await fetchAllEvents();
-
-        if (allEvents.length === 0) {
-            elements.eventManageList.innerHTML = '<div style="text-align:center;color:#64748b;padding:40px;">暂无活动数据</div>';
-            return;
-        }
-
-        const sortedEvents = [...allEvents].sort((a, b) => {
-            const da = parseDate(a.date);
-            const db = parseDate(b.date);
-            return db - da;
-        });
-
-        let html = '';
-        sortedEvents.forEach(event => {
-            const typeInfo = EVENT_TYPE_INFO[event.type] || EVENT_TYPE_INFO.other;
-            html += `
-                <div class="event-manage-card">
-                    <div class="event-manage-header">
-                        <span class="event-type-badge event-type-${event.type}" style="background:${typeInfo.gradient};">
-                            <i class="fas ${typeInfo.icon}"></i> ${typeInfo.label}
-                        </span>
-                        <span class="event-manage-date"><i class="fas fa-calendar-day"></i> ${event.date}</span>
-                    </div>
-                    <h3 class="event-manage-title">${event.title}</h3>
-                    <p class="event-manage-desc">${event.description}</p>
-                    <div class="event-manage-actions">
-                        <button class="btn-outline" onclick="openEventEditModal(${event.id})">
-                            <i class="fas fa-edit"></i> 编辑
-                        </button>
-                        <button class="btn-outline" style="color:#ef4444;" onclick="deleteEvent(${event.id})">
-                            <i class="fas fa-trash"></i> 删除
-                        </button>
-                    </div>
-                </div>
-            `;
-        });
-
-        elements.eventManageList.innerHTML = html;
-    }
-
-    if (elements.eventAddBtn) {
-        elements.eventAddBtn.onclick = () => {
-            openEventEditModal(null);
-        };
-    }
-
-    window.openEventEditModal = (eventId) => {
-        elements.eventEditForm.reset();
-        elements.eventEditId.value = eventId || '';
-
-        if (eventId) {
-            const event = allEvents.find(e => e.id === eventId);
-            if (event) {
-                elements.eventEditTitle.value = event.title;
-                elements.eventEditDate.value = event.date;
-                elements.eventEditType.value = event.type;
-                elements.eventEditDesc.value = event.description;
+                const btnWrap = document.createElement('div');
+                btnWrap.style.marginTop = '12px';
+                btnWrap.appendChild(delBtn);
+                card.appendChild(btnWrap);
+                frag.appendChild(card);
             }
-        } else {
-            elements.eventEditDate.value = formatDate(new Date());
-        }
-
-        elements.eventEditModal.classList.remove('hidden');
-    };
-
-    if (elements.eventEditClose) {
-        elements.eventEditClose.onclick = () => elements.eventEditModal.classList.add('hidden');
-    }
-    if (elements.eventEditCancel) {
-        elements.eventEditCancel.onclick = () => elements.eventEditModal.classList.add('hidden');
-    }
-
-    elements.eventEditForm.onsubmit = async (e) => {
-        e.preventDefault();
-        const payload = {
-            title: elements.eventEditTitle.value,
-            date: elements.eventEditDate.value,
-            type: elements.eventEditType.value,
-            description: elements.eventEditDesc.value,
-            created_by: currentUser.username
-        };
-
-        const eventId = elements.eventEditId.value;
-        const url = eventId ? '/api/events/update' : '/api/events/create';
-        if (eventId) payload.id = parseInt(eventId);
-
-        try {
-            const resp = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const data = await resp.json();
-            if (resp.ok && data.status === 'success') {
-                showToast(eventId ? '活动已更新！' : '活动已创建！');
-                elements.eventEditModal.classList.add('hidden');
-                await fetchAllEvents();
-                if (!document.getElementById('event-manage-tab').classList.contains('hidden')) {
-                    loadEventManage();
-                }
-                if (!document.getElementById('event-calendar-tab').classList.contains('hidden')) {
-                    renderCalendar();
-                }
-            } else {
-                showToast(data.message || '操作失败');
-            }
+            eventManageList.innerHTML = '';
+            eventManageList.appendChild(frag);
         } catch (err) {
-            showToast('操作失败');
+            eventManageList.innerHTML = '<p style="color:#ef4444;padding:20px;text-align:center;">����ʧ��</p>';
         }
-    };
-
-    window.deleteEvent = async (eventId) => {
-        if (!confirm('确定删除该活动？')) return;
-        try {
-            const resp = await fetch('/api/events/delete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: eventId })
-            });
-            const data = await resp.json();
-            if (resp.ok && data.status === 'success') {
-                showToast('活动已删除');
-                elements.eventDetailModal.classList.add('hidden');
-                await fetchAllEvents();
-                if (!document.getElementById('event-manage-tab').classList.contains('hidden')) {
-                    loadEventManage();
-                }
-                if (!document.getElementById('event-calendar-tab').classList.contains('hidden')) {
-                    renderCalendar();
-                }
-            } else {
-                showToast(data.message || '删除失败');
-            }
-        } catch (err) {
-            showToast('删除失败');
-        }
-    };
+    }
 
     // --- Subscription Modal ---
-    if (elements.calendarSubscribeBtn) {
-        elements.calendarSubscribeBtn.onclick = async () => {
-            await fetchUserSubscriptions();
-            elements.subscribeTypePeak.checked = isUserSubscribedToType('peak');
-            elements.subscribeTypePromotion.checked = isUserSubscribedToType('promotion');
-            elements.subscribeTypeHoliday.checked = isUserSubscribedToType('holiday');
-            elements.subscribeTypeOther.checked = isUserSubscribedToType('other');
-            elements.subscribeModal.classList.remove('hidden');
-        };
-    }
-
-    if (elements.subscribeClose) {
-        elements.subscribeClose.onclick = () => elements.subscribeModal.classList.add('hidden');
-    }
-    if (elements.subscribeCancel) {
-        elements.subscribeCancel.onclick = () => elements.subscribeModal.classList.add('hidden');
-    }
-
-    elements.subscribeForm.onsubmit = async (e) => {
-        e.preventDefault();
-        const selectedTypes = [];
-        if (elements.subscribeTypePeak.checked) selectedTypes.push('peak');
-        if (elements.subscribeTypePromotion.checked) selectedTypes.push('promotion');
-        if (elements.subscribeTypeHoliday.checked) selectedTypes.push('holiday');
-        if (elements.subscribeTypeOther.checked) selectedTypes.push('other');
-
+    async function openSubscribeModal() {
+        const modal = document.getElementById('subscribe-modal');
+        const listEl = document.getElementById('subscribe-types-list');
+        if (!modal || !listEl) return;
+        modal.classList.remove('hidden');
+        const user = AppState.getUser();
+        if (!user) return;
         try {
-            const currentTypes = userSubscriptions.map(s => s.eventType);
-            const toAdd = selectedTypes.filter(t => !currentTypes.includes(t));
-            const toRemove = currentTypes.filter(t => !selectedTypes.includes(t));
-
-            for (const type of toAdd) {
-                await fetch('/api/subscribe', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: currentUser.username, event_type: type })
-                });
+            const { data: subs } = await Api.getSubscriptions(user.username);
+            AppState.setUserSubscriptions(subs || []);
+            const types = [
+                { key: 'academic', label: 'ѧ������', icon: 'fa-graduation-cap' },
+                { key: 'cultural', label: '�����ݳ�', icon: 'fa-palette' },
+                { key: 'sports', label: '��������', icon: 'fa-running' },
+                { key: 'volunteer', label: '־Ը����', icon: 'fa-hands-helping' },
+                { key: 'other', label: '�����', icon: 'fa-star' }
+            ];
+            listEl.innerHTML = '';
+            const frag = document.createDocumentFragment();
+            for (const t of types) {
+                const subscribed = AppState.isUserSubscribedToType(t.key);
+                const item = document.createElement('label');
+                item.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px;background:#f8fafc;border-radius:8px;cursor:pointer;margin-bottom:8px;';
+                item.innerHTML = `
+                    <input type="checkbox" value="${t.key}" ${subscribed ? 'checked' : ''} style="width:18px;height:18px;">
+                    <i class="fas ${t.icon}" style="color:#6366f1;width:20px;"></i>
+                    <span style="font-size:0.95rem;">${t.label}</span>
+                `;
+                frag.appendChild(item);
             }
-            for (const type of toRemove) {
-                await fetch('/api/unsubscribe', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: currentUser.username, event_type: type })
-                });
-            }
-
-            await fetchUserSubscriptions();
-            showToast('订阅设置已保存！');
-            elements.subscribeModal.classList.add('hidden');
-            if (!document.getElementById('dashboard-tab').classList.contains('hidden')) {
-                loadEventBanners();
-            }
-        } catch (err) {
-            showToast('保存失败');
-        }
-    };
-
-    // --- Notifications ---
-    async function loadNotifications() {
-        if (!elements.notificationList) return;
-        try {
-            const resp = await fetch(`/api/notifications?username=${encodeURIComponent(currentUser.username)}`);
-            const notifications = await resp.json();
-            renderNotifications(notifications);
-        } catch (err) {
-            console.error('Failed to load notifications:', err);
-            elements.notificationList.innerHTML = '<div style="text-align:center;color:#64748b;padding:40px;">加载失败</div>';
-        }
-    }
-
-    function renderNotifications(notifications) {
-        if (!notifications || notifications.length === 0) {
-            elements.notificationList.innerHTML = '<div style="text-align:center;color:#64748b;padding:40px;">暂无通知</div>';
-            if (elements.notificationUnreadCount) {
-                elements.notificationUnreadCount.style.display = 'none';
-            }
-            return;
-        }
-
-        const unreadCount = notifications.filter(n => n.readFlag !== 'yes').length;
-        if (elements.notificationUnreadCount) {
-            if (unreadCount > 0) {
-                elements.notificationUnreadCount.textContent = unreadCount > 99 ? '99+' : unreadCount;
-                elements.notificationUnreadCount.style.display = 'inline-flex';
-            } else {
-                elements.notificationUnreadCount.style.display = 'none';
-            }
-        }
-
-        const sorted = [...notifications].sort((a, b) => b.id - a.id);
-        let html = '';
-
-        sorted.forEach(notif => {
-            const typeInfo = EVENT_TYPE_INFO[notif.eventType] || EVENT_TYPE_INFO.other;
-            const isUnread = notif.readFlag !== 'yes';
-            html += `
-                <div class="notification-item ${isUnread ? 'unread' : ''}" data-id="${notif.id}" onclick="markNotificationRead(${notif.id}, this)">
-                    <div class="notification-icon notification-icon-${notif.eventType}" style="background:${typeInfo.gradient};">
-                        <i class="fas ${typeInfo.icon}"></i>
-                    </div>
-                    <div class="notification-content">
-                        <div class="notification-title">
-                            ${notif.eventTitle}
-                            ${isUnread ? '<span class="notification-unread-dot"></span>' : ''}
-                        </div>
-                        <div class="notification-body">${notif.content}</div>
-                        <div class="notification-meta">
-                            <span><i class="fas fa-calendar-day"></i> 活动日期：${notif.eventDate}</span>
-                            <span><i class="fas fa-clock"></i> ${notif.createTime || '-'}</span>
-                        </div>
-                    </div>
-                </div>
-            `;
-        });
-
-        elements.notificationList.innerHTML = html;
-    }
-
-    window.markNotificationRead = async (id, el) => {
-        try {
-            await fetch('/api/notifications/read', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id, username: currentUser.username })
-            });
-            if (el) {
-                el.classList.remove('unread');
-                const dot = el.querySelector('.notification-unread-dot');
-                if (dot) dot.remove();
-            }
-            loadNotifications();
-        } catch (err) {
-            console.error('Failed to mark notification read:', err);
-        }
-    };
-
-    if (elements.notificationMarkAllBtn) {
-        elements.notificationMarkAllBtn.onclick = async () => {
-            try {
-                const resp = await fetch(`/api/notifications?username=${encodeURIComponent(currentUser.username)}`);
-                const notifications = await resp.json();
-                const unread = notifications.filter(n => n.readFlag !== 'yes');
-                for (const n of unread) {
-                    await fetch('/api/notifications/read', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ id: n.id, username: currentUser.username })
-                    });
-                }
-                showToast('已全部标记为已读');
-                loadNotifications();
-            } catch (err) {
-                showToast('操作失败');
-            }
-        };
-    }
-
-    // --- Weather Card (Dashboard) ---
-    const WEATHER_TYPES = {
-        sunny: { label: '晴', icon: 'fa-sun', iconClass: 'sunny' },
-        partlyCloudy: { label: '多云', icon: 'fa-cloud-sun', iconClass: 'cloudy' },
-        cloudy: { label: '阴', icon: 'fa-cloud', iconClass: 'cloudy' },
-        lightRain: { label: '小雨', icon: 'fa-cloud-rain', iconClass: 'rainy' },
-        heavyRain: { label: '大雨', icon: 'fa-cloud-showers-heavy', iconClass: 'rainy' },
-        thunderstorm: { label: '雷阵雨', icon: 'fa-cloud-bolt', iconClass: 'rainy' },
-        snow: { label: '小雪', icon: 'fa-snowflake', iconClass: 'snowy' },
-        heavySnow: { label: '大雪', icon: 'fa-snowflake', iconClass: 'snowy' },
-        windy: { label: '大风', icon: 'fa-wind', iconClass: 'windy' },
-        hot: { label: '高温', icon: 'fa-sun', iconClass: 'hot' },
-        cold: { label: '寒冷', icon: 'fa-temperature-arrow-down', iconClass: 'snowy' },
-        fog: { label: '雾霾', icon: 'fa-smog', iconClass: 'foggy' }
-    };
-
-    let weatherCollapsed = localStorage.getItem('weatherCollapsed') === 'true';
-
-    function generateMockWeather() {
-        const now = new Date();
-        const month = now.getMonth() + 1;
-        const hour = now.getHours();
-
-        let possibleTypes;
-        if (month >= 6 && month <= 8) {
-            possibleTypes = ['sunny', 'partlyCloudy', 'cloudy', 'thunderstorm', 'lightRain', 'heavyRain', 'hot', 'fog', 'windy'];
-        } else if (month === 12 || month <= 2) {
-            possibleTypes = ['sunny', 'partlyCloudy', 'cloudy', 'cold', 'snow', 'heavySnow', 'fog', 'windy'];
-        } else {
-            possibleTypes = ['sunny', 'partlyCloudy', 'cloudy', 'lightRain', 'heavyRain', 'fog', 'windy'];
-        }
-
-        const typeKey = possibleTypes[Math.floor(Math.random() * possibleTypes.length)];
-        const type = WEATHER_TYPES[typeKey];
-
-        let temp;
-        if (typeKey === 'hot') {
-            temp = Math.floor(Math.random() * 6) + 33;
-        } else if (typeKey === 'cold' || typeKey === 'snow' || typeKey === 'heavySnow') {
-            temp = Math.floor(Math.random() * 8) - 3;
-        } else if (month >= 6 && month <= 8) {
-            temp = Math.floor(Math.random() * 12) + 24;
-        } else if (month === 12 || month <= 2) {
-            temp = Math.floor(Math.random() * 12) + 0;
-        } else {
-            temp = Math.floor(Math.random() * 15) + 12;
-        }
-
-        let humidity;
-        if (['lightRain', 'heavyRain', 'thunderstorm'].includes(typeKey)) {
-            humidity = Math.floor(Math.random() * 15) + 75;
-        } else if (typeKey === 'hot' || typeKey === 'sunny') {
-            humidity = Math.floor(Math.random() * 20) + 30;
-        } else if (typeKey === 'fog') {
-            humidity = Math.floor(Math.random() * 10) + 85;
-        } else {
-            humidity = Math.floor(Math.random() * 30) + 45;
-        }
-
-        let windLevel, windLabel;
-        if (typeKey === 'windy' || typeKey === 'thunderstorm' || typeKey === 'heavyRain' || typeKey === 'heavySnow') {
-            windLevel = Math.floor(Math.random() * 3) + 5;
-            windLabel = ['5级', '6级', '7级'][windLevel - 5];
-        } else {
-            windLevel = Math.floor(Math.random() * 4) + 1;
-            windLabel = ['1级', '2级', '3级', '4级'][windLevel - 1];
-        }
-
-        const windDirections = ['东北风', '东风', '东南风', '南风', '西南风', '西风', '西北风', '北风'];
-        const windDir = windDirections[Math.floor(Math.random() * windDirections.length)];
-
-        return {
-            typeKey,
-            typeLabel: type.label,
-            icon: type.icon,
-            iconClass: type.iconClass,
-            temperature: temp,
-            humidity,
-            windLevel,
-            windLabel: `${windDir} ${windLabel}`
-        };
-    }
-
-    function generateWeatherSuggestions(weather) {
-        const suggestions = [];
-
-        suggestions.push({
-            level: 'info',
-            icon: 'fa-sun',
-            title: '今日天气速览',
-            desc: `${weather.typeLabel}，气温${weather.temperature}°C，相对湿度${weather.humidity}%，${weather.windLabel}`
-        });
-
-        if (['lightRain', 'heavyRain', 'thunderstorm'].includes(weather.typeKey)) {
-            suggestions.push({
-                level: 'warn',
-                icon: 'fa-umbrella',
-                title: '包裹防潮提醒',
-                desc: '雨天配送请携带防水袋，对纸质包裹、电子商品做好防潮保护，避免淋湿损坏。'
-            });
-            if (weather.typeKey === 'thunderstorm') {
-                suggestions.push({
-                    level: 'alert',
-                    icon: 'fa-bolt',
-                    title: '雷雨安全提示',
-                    desc: '雷电天气请避免在空旷区域、大树下停留，注意人身安全优先于配送时效。'
-                });
-            }
-            if (weather.typeKey === 'heavyRain') {
-                suggestions.push({
-                    level: 'warn',
-                    icon: 'fa-shoe-prints',
-                    title: '出行注意防滑',
-                    desc: '地面积水较多，请穿着防滑鞋，小心路滑，低速通过积水区域。'
-                });
-            }
-        }
-
-        if (weather.typeKey === 'hot' || weather.temperature >= 32) {
-            suggestions.push({
-                level: 'warn',
-                icon: 'fa-sun',
-                title: '避免包裹暴晒',
-                desc: '高温天气请勿将包裹长时间置于阳光下，食品、化妆品、电子类商品注意遮阳。'
-            });
-            suggestions.push({
-                level: 'safe',
-                icon: 'fa-bottle-water',
-                title: '防暑降温建议',
-                desc: '配送途中及时补充水分，备好防暑用品，合理安排休息避免中暑。'
-            });
-        }
-
-        if (weather.temperature <= 3 || weather.typeKey === 'cold') {
-            suggestions.push({
-                level: 'info',
-                icon: 'fa-mitten',
-                title: '防寒保暖提示',
-                desc: '气温较低，配送时注意佩戴手套、围巾，做好防寒保暖措施。'
-            });
-        }
-
-        if (['snow', 'heavySnow'].includes(weather.typeKey)) {
-            suggestions.push({
-                level: 'alert',
-                icon: 'fa-person-walking',
-                title: '雪天路滑小心',
-                desc: '路面结冰湿滑，请减速慢行，上下楼梯注意防滑，确保人身及包裹安全。'
-            });
-            if (weather.typeKey === 'heavySnow') {
-                suggestions.push({
-                    level: 'warn',
-                    icon: 'fa-box',
-                    title: '包裹防湿防冻',
-                    desc: '大雪天请用防水袋包裹商品，怕冻物品（如生鲜、液态）做好保温措施。'
-                });
-            }
-        }
-
-        if (weather.typeKey === 'windy' || weather.windLevel >= 5) {
-            suggestions.push({
-                level: 'warn',
-                icon: 'fa-box-open',
-                title: '轻件固定提醒',
-                desc: '大风天气请将小件、轻质包裹固定好，避免途中被风吹落或吹散。'
-            });
-            suggestions.push({
-                level: 'alert',
-                icon: 'fa-triangle-exclamation',
-                title: '高空坠物风险',
-                desc: '注意避开广告牌、树木、临时搭建物等易被风吹落的区域，谨防高空坠物。'
-            });
-        }
-
-        if (weather.typeKey === 'fog') {
-            suggestions.push({
-                level: 'warn',
-                icon: 'fa-eye',
-                title: '低能见度注意',
-                desc: '雾霾天气能见度低，穿越道路请减速观察，注意来往车辆，确保交通安全。'
-            });
-            suggestions.push({
-                level: 'info',
-                icon: 'fa-face-mask',
-                title: '防护用品建议',
-                desc: '空气质量较差，请佩戴口罩做好防护，减少长时间户外停留。'
-            });
-        }
-
-        if (weather.humidity >= 80) {
-            suggestions.push({
-                level: 'info',
-                icon: 'fa-droplet',
-                title: '高湿度防潮建议',
-                desc: '空气湿度较大，建议对衣物、纸质文件、数码产品等包裹做好防潮封装。'
-            });
-        }
-
-        if (suggestions.length === 1) {
-            suggestions.push({
-                level: 'safe',
-                icon: 'fa-circle-check',
-                title: '配送条件良好',
-                desc: '今日天气状况良好，适合配送，请注意交通安全，祝您好运连连！'
-            });
-        }
-
-        return suggestions;
-    }
-
-    async function fetchWeatherData() {
-        try {
-            const resp = await fetch('/api/weather');
-            if (resp.ok) {
-                const data = await resp.json();
-                if (data && data.typeKey && WEATHER_TYPES[data.typeKey]) {
-                    const t = WEATHER_TYPES[data.typeKey];
-                    return {
-                        typeKey: data.typeKey,
-                        typeLabel: t.label,
-                        icon: t.icon,
-                        iconClass: t.iconClass,
-                        temperature: data.temperature ?? 25,
-                        humidity: data.humidity ?? 60,
-                        windLevel: data.windLevel ?? 2,
-                        windLabel: data.windLabel || '东风 2级'
-                    };
-                }
-            }
-        } catch (e) {
-            // Fallback to mock data
-        }
-        return generateMockWeather();
-    }
-
-    let currentWeather = null;
-
-    async function loadWeatherCard() {
-        if (!elements.weatherCardContainer) return;
-
-        currentWeather = await fetchWeatherData();
-        const suggestions = generateWeatherSuggestions(currentWeather);
-
-        const summaryText = `${currentWeather.typeLabel} · ${currentWeather.temperature}°C · ${currentWeather.humidity}% · ${currentWeather.windLabel}`;
-
-        const suggestionsHTML = suggestions.map(s => `
-            <div class="weather-suggestion-item">
-                <div class="weather-suggestion-icon ${s.level}">
-                    <i class="fas ${s.icon}"></i>
-                </div>
-                <div class="weather-suggestion-text">
-                    <div class="weather-suggestion-title">${s.title}</div>
-                    <div class="weather-suggestion-desc">${s.desc}</div>
-                </div>
-            </div>
-        `).join('');
-
-        const html = `
-            <div class="weather-card ${weatherCollapsed ? 'collapsed' : ''}" id="weather-card-el">
-                <div class="weather-card-header" id="weather-card-toggle">
-                    <div class="weather-card-icon ${currentWeather.iconClass}">
-                        <i class="fas ${currentWeather.icon}"></i>
-                    </div>
-                    <div class="weather-info-main">
-                        <div class="weather-temperature">
-                            <span class="weather-temp-value">${currentWeather.temperature}</span>
-                            <span class="weather-temp-unit">°C</span>
-                        </div>
-                        <div class="weather-condition">${currentWeather.typeLabel}</div>
-                        <div class="weather-summary-line">
-                            <span class="weather-meta-item"><i class="fas fa-droplet"></i> 湿度 ${currentWeather.humidity}%</span>
-                            <span class="weather-meta-item"><i class="fas fa-wind"></i> ${currentWeather.windLabel}</span>
-                        </div>
-                    </div>
-                    <div class="weather-collapsed-summary">
-                        <span>${currentWeather.typeLabel} ${currentWeather.temperature}°C</span>
-                        <span style="color: #94a3b8; font-size: 0.85rem;">·</span>
-                        <span style="color: #94a3b8; font-size: 0.85rem; font-weight: 500;">配送建议${suggestions.length}条</span>
-                    </div>
-                    <button class="weather-toggle-btn" title="${weatherCollapsed ? '展开' : '折叠'}">
-                        <i class="fas fa-chevron-down"></i>
-                    </button>
-                </div>
-                <div class="weather-card-body">
-                    <div class="weather-suggestions-title">
-                        <i class="fas fa-lightbulb"></i> 今日配送建议
-                    </div>
-                    <div class="weather-suggestions-list">
-                        ${suggestionsHTML}
-                    </div>
-                </div>
-            </div>
-        `;
-
-        elements.weatherCardContainer.innerHTML = html;
-
-        const toggleEl = document.getElementById('weather-card-toggle');
-        if (toggleEl) {
-            toggleEl.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const cardEl = document.getElementById('weather-card-el');
-                if (cardEl) {
-                    weatherCollapsed = !weatherCollapsed;
-                    cardEl.classList.toggle('collapsed', weatherCollapsed);
-                    localStorage.setItem('weatherCollapsed', String(weatherCollapsed));
-                    const btn = toggleEl.querySelector('.weather-toggle-btn');
-                    if (btn) {
-                        btn.title = weatherCollapsed ? '展开' : '折叠';
-                    }
-                }
-            });
-        }
-    }
-
-    // --- Package Size Guide ---
-    window.postWithSize = (size) => {
-        if (!SIZE_FEE[size]) {
-            size = 'medium';
-        }
-        const pkgSizeEl = document.getElementById('pkg-size');
-        if (pkgSizeEl) {
-            pkgSizeEl.value = size;
-        }
-
-        const sizeLabel = SIZE_FEE[size]?.label || '中件';
-        const pkgNameEl = document.getElementById('pkg-name');
-        if (pkgNameEl && !pkgNameEl.value) {
-            pkgNameEl.value = `${sizeLabel}包裹`;
-        }
-
-        document.querySelector('[data-tab="post-task"]').click();
-        showToast(`已选择${sizeLabel}，请完善信息后发布`);
-    };
-
-    function initGuideAnchorNav() {
-        const guideTab = document.getElementById('package-guide-tab');
-        if (!guideTab) return;
-
-        const anchorBtns = guideTab.querySelectorAll('.anchor-btn');
-        anchorBtns.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                const targetId = btn.getAttribute('href').substring(1);
-                const targetEl = document.getElementById(targetId);
-                if (targetEl) {
-                    targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-            });
-        });
-    }
-
-    initGuideAnchorNav();
-
-    // --- Private Messaging ---
-    async function fetchUserRealName(username) {
-        if (userRealNameCache[username]) return userRealNameCache[username];
-        try {
-            const resp = await fetch(`/api/user?username=${encodeURIComponent(username)}`);
-            const data = await resp.json();
-            if (data && data.realName) {
-                userRealNameCache[username] = data.realName;
-                return data.realName;
-            }
-        } catch (err) {
-            console.error('Failed to fetch user real name:', err);
-        }
-        return username;
-    }
-
-    async function loadMessages() {
-        if (!currentUser) return;
-        await loadConversations();
-        await updateMsgUnreadCount();
-        if (msgPollInterval) clearInterval(msgPollInterval);
-        msgPollInterval = setInterval(async () => {
-            await updateMsgUnreadCount();
-        }, 10000);
-    }
-
-    async function updateMsgUnreadCount() {
-        if (!currentUser) return;
-        try {
-            const resp = await fetch(`/api/messages/unread?username=${encodeURIComponent(currentUser.username)}`);
-            const data = await resp.json();
-            const count = data.count || 0;
-            if (elements.msgUnreadCount) {
-                if (count > 0) {
-                    elements.msgUnreadCount.textContent = count > 99 ? '99+' : count;
-                    elements.msgUnreadCount.style.display = 'inline-flex';
-                } else {
-                    elements.msgUnreadCount.style.display = 'none';
-                }
-            }
-        } catch (err) {
-            console.error('Failed to update unread count:', err);
-        }
-    }
-
-    async function loadConversations() {
-        if (!elements.msgConversationList) return;
-        try {
-            const resp = await fetch(`/api/messages/conversations?username=${encodeURIComponent(currentUser.username)}`);
-            const conversations = await resp.json();
-            await renderConversations(conversations);
-        } catch (err) {
-            console.error('Failed to load conversations:', err);
-            elements.msgConversationList.innerHTML = '<div class="msg-empty">加载失败</div>';
-        }
-    }
-
-    async function renderConversations(conversations) {
-        if (!conversations || conversations.length === 0) {
-            elements.msgConversationList.innerHTML = '<div class="msg-empty">暂无会话</div>';
-            return;
-        }
-
-        const searchTerm = elements.msgSearchInput ? elements.msgSearchInput.value.trim().toLowerCase() : '';
-        let html = '';
-
-        for (const conv of conversations) {
-            const peerUsername = conv.user1 === currentUser.username ? conv.user2 : conv.user1;
-            const peerName = await fetchUserRealName(peerUsername);
-
-            if (searchTerm && !peerName.toLowerCase().includes(searchTerm) && !peerUsername.toLowerCase().includes(searchTerm)) {
-                continue;
-            }
-
-            const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(peerUsername)}`;
-            const lastMsg = conv.lastMessage || '';
-            const lastTime = conv.lastTime ? formatMsgTime(conv.lastTime) : '';
-            const isActive = currentMsgThread && currentMsgThread === conv.id;
-
-            let hasUnread = false;
-            try {
-                const msgResp = await fetch(`/api/messages?threadId=${conv.id}`);
-                const msgs = await msgResp.json();
-                hasUnread = msgs.some(m => m.sender !== currentUser.username && m.readFlag === 'no');
-            } catch (e) { /* ignore */ }
-
-            html += `
-                <div class="msg-conversation-item ${isActive ? 'active' : ''}" data-thread-id="${conv.id}" data-peer="${peerUsername}" onclick="selectConversation(${conv.id}, '${peerUsername}')">
-                    <img class="msg-conversation-avatar" src="${avatarUrl}" alt="${peerName}">
-                    <div class="msg-conversation-info">
-                        <div class="msg-conversation-top">
-                            <span class="msg-conversation-name">${peerName}</span>
-                            <span class="msg-conversation-time">${lastTime}</span>
-                        </div>
-                        <div class="msg-conversation-preview">${escapeHtml(lastMsg)}</div>
-                    </div>
-                    ${hasUnread ? '<span class="msg-unread-dot"></span>' : ''}
-                </div>
-            `;
-        }
-
-        elements.msgConversationList.innerHTML = html || '<div class="msg-empty">无匹配结果</div>';
-    }
-
-    function formatMsgTime(timeStr) {
-        if (!timeStr) return '';
-        const parts = timeStr.split(' ');
-        if (parts.length < 2) return timeStr;
-        const datePart = parts[0];
-        const timePart = parts[1].substring(0, 5);
-        const today = new Date();
-        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-        if (datePart === todayStr) return timePart;
-        return datePart.substring(5);
-    }
-
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    window.selectConversation = async (threadId, peerUsername) => {
-        currentMsgThread = threadId;
-        currentMsgPeer = peerUsername;
-
-        if (elements.msgEmptyState) elements.msgEmptyState.classList.add('hidden');
-        if (elements.msgChat) elements.msgChat.classList.remove('hidden');
-
-        const peerName = await fetchUserRealName(peerUsername);
-        const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(peerUsername)}`;
-
-        if (elements.msgChatName) elements.msgChatName.textContent = peerName;
-        if (elements.msgChatAvatar) elements.msgChatAvatar.src = avatarUrl;
-
-        if (elements.msgConversationList) {
-            elements.msgConversationList.querySelectorAll('.msg-conversation-item').forEach(el => {
-                el.classList.toggle('active', parseInt(el.dataset.threadId) === threadId);
-            });
-        }
-
-        const unreadDot = elements.msgConversationList.querySelector(`.msg-conversation-item[data-thread-id="${threadId}"] .msg-unread-dot`);
-        if (unreadDot) unreadDot.remove();
-
-        await fetchThreadMessages(threadId);
-        await markThreadRead(threadId);
-
-        if (msgDrafts[threadId] && elements.msgInput) {
-            elements.msgInput.value = msgDrafts[threadId];
-        } else if (elements.msgInput) {
-            elements.msgInput.value = '';
-        }
-    };
-
-    async function fetchThreadMessages(threadId) {
-        if (!elements.msgChatMessages) return;
-        try {
-            const resp = await fetch(`/api/messages?threadId=${threadId}`);
-            const messages = await resp.json();
-            renderChatMessages(messages);
-        } catch (err) {
-            console.error('Failed to fetch messages:', err);
-            elements.msgChatMessages.innerHTML = '<div class="msg-empty">加载失败</div>';
-        }
-    }
-
-    function renderChatMessages(messages) {
-        if (!elements.msgChatMessages) return;
-        if (!messages || messages.length === 0) {
-            elements.msgChatMessages.innerHTML = '<div class="msg-empty">暂无消息</div>';
-            return;
-        }
-
-        let html = '';
-        messages.forEach(msg => {
-            const isSent = msg.sender === currentUser.username;
-            const bubbleClass = isSent ? 'sent' : 'received';
-            const timeDisplay = formatMsgTime(msg.sendTime);
-            html += `
-                <div class="msg-bubble ${bubbleClass}">
-                    <div class="msg-bubble-content">${escapeHtml(msg.content)}</div>
-                    <div class="msg-bubble-time">${timeDisplay}</div>
-                </div>
-            `;
-        });
-
-        elements.msgChatMessages.innerHTML = html;
-        elements.msgChatMessages.scrollTop = elements.msgChatMessages.scrollHeight;
-    }
-
-    async function markThreadRead(threadId) {
-        try {
-            await fetch('/api/messages/read', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ threadId, username: currentUser.username })
-            });
-            await updateMsgUnreadCount();
-        } catch (err) {
-            console.error('Failed to mark messages read:', err);
-        }
-    }
-
-    async function sendMessage() {
-        if (!elements.msgInput || !currentMsgPeer || !currentUser) return;
-        const content = elements.msgInput.value.trim();
-        if (!content) return;
-
-        try {
-            const resp = await fetch('/api/messages/send', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    sender: currentUser.username,
-                    receiver: currentMsgPeer,
-                    content: content
-                })
-            });
-
-            const data = await resp.json();
-            if (data.status === 'success') {
-                elements.msgInput.value = '';
-                delete msgDrafts[currentMsgThread];
-                localStorage.setItem('msg_drafts', JSON.stringify(msgDrafts));
-                await fetchThreadMessages(currentMsgThread);
-                await loadConversations();
-            } else {
-                showToast(data.message || '发送失败');
-            }
-        } catch (err) {
-            showToast('消息发送失败');
-        }
-    }
-
-    window.openChatWith = async (username) => {
-        if (username === currentUser.username) {
-            showToast('不能给自己发私信');
-            return;
-        }
-        document.querySelector('[data-tab="messages"]').click();
-
-        try {
-            const convResp = await fetch(`/api/messages/conversations?username=${encodeURIComponent(currentUser.username)}`);
-            const conversations = await convResp.json();
-            const existing = conversations.find(c =>
-                (c.user1 === currentUser.username && c.user2 === username) ||
-                (c.user2 === currentUser.username && c.user1 === username)
-            );
-
-            if (existing) {
-                await selectConversation(existing.id, username);
-            } else {
-                try {
-                    const sendResp = await fetch('/api/messages/send', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            sender: currentUser.username,
-                            receiver: username,
-                            content: '你好，我在订单中想和你沟通一下'
-                        })
-                    });
-                    const sendData = await sendResp.json();
-                    if (sendData.status === 'success') {
-                        await loadConversations();
-                        await selectConversation(sendData.threadId, username);
-                    }
-                } catch (err) {
-                    showToast('发起会话失败');
-                }
-            }
-        } catch (err) {
-            showToast('打开聊天失败');
-        }
-    };
-
-    if (elements.msgSendBtn) {
-        elements.msgSendBtn.onclick = () => sendMessage();
-    }
-
-    if (elements.msgInput) {
-        elements.msgInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
-        });
-
-        elements.msgInput.addEventListener('input', () => {
-            if (currentMsgThread && elements.msgInput) {
-                msgDrafts[currentMsgThread] = elements.msgInput.value;
-                localStorage.setItem('msg_drafts', JSON.stringify(msgDrafts));
-            }
-        });
-    }
-
-    if (elements.msgBackBtn) {
-        elements.msgBackBtn.onclick = () => {
-            if (elements.msgChat) elements.msgChat.classList.add('hidden');
-            if (elements.msgEmptyState) elements.msgEmptyState.classList.remove('hidden');
-            currentMsgThread = null;
-            currentMsgPeer = null;
-            if (elements.msgConversationList) {
-                elements.msgConversationList.querySelectorAll('.msg-conversation-item').forEach(el => {
-                    el.classList.remove('active');
-                });
-            }
-        };
-    }
-
-    if (elements.msgSearchInput) {
-        elements.msgSearchInput.addEventListener('input', () => {
-            loadConversations();
-        });
-    }
-
-    // --- Data Dashboard ---
-    let currentStatsRange = 'week';
-
-    async function loadDashboardStats(range) {
-        if (range) currentStatsRange = range;
-        try {
-            const resp = await fetch(`/api/stats?range=${currentStatsRange}`);
-            const data = await resp.json();
-
-            if (elements.statTotalUsers) elements.statTotalUsers.textContent = data.totalUsers || 0;
-            if (elements.statTotalOrders) elements.statTotalOrders.textContent = data.totalOrders || 0;
-            if (elements.statTodayUsers) elements.statTodayUsers.textContent = data.todayNewUsers || 0;
-            if (elements.statTodayOrders) elements.statTodayOrders.textContent = data.todayNewOrders || 0;
-
-            if (data.statusDistribution) {
-                renderStatusBarChart(data.statusDistribution);
-            }
-            if (data.dailyTrend) {
-                renderTrendLineChart(data.dailyTrend);
-            }
-
-            updateRangeButtons();
-        } catch (err) {
-            console.error('Failed to load dashboard stats:', err);
-        }
-    }
-
-    function updateRangeButtons() {
-        const tab = document.getElementById('data-dashboard-tab');
-        if (!tab) return;
-        const btns = tab.querySelectorAll('.toggle-btn');
-        btns.forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.range === currentStatsRange);
-        });
-    }
-
-    function renderStatusBarChart(distribution) {
-        if (!elements.statusBarChart) return;
-
-        const statusLabels = {
-            pending: '待接单',
-            accepted: '进行中',
-            delivered: '待收货',
-            completed: '已完成',
-            cancelled: '已撤回'
-        };
-
-        const statusColors = {
-            pending: '#f59e0b',
-            accepted: '#3b82f6',
-            delivered: '#8b5cf6',
-            completed: '#10b981',
-            cancelled: '#ef4444'
-        };
-
-        const statuses = ['pending', 'accepted', 'delivered', 'completed', 'cancelled'];
-        const values = statuses.map(s => distribution[s] || 0);
-        const maxValue = Math.max(...values, 1);
-
-        let html = '';
-        statuses.forEach(status => {
-            const value = distribution[status] || 0;
-            const heightPercent = (value / maxValue) * 100;
-            const color = statusColors[status];
-            html += `
-                <div class="bar-item">
-                    <span class="bar-value">${value}</span>
-                    <div class="bar-fill" style="height: ${heightPercent}%; background: linear-gradient(180deg, ${color}, ${adjustColor(color, -20)});"></div>
-                    <span class="bar-label">${statusLabels[status]}</span>
-                </div>
-            `;
-        });
-
-        elements.statusBarChart.innerHTML = html;
-    }
-
-    function adjustColor(hex, amount) {
-        const num = parseInt(hex.replace('#', ''), 16);
-        const r = Math.min(255, Math.max(0, (num >> 16) + amount));
-        const g = Math.min(255, Math.max(0, ((num >> 8) & 0x00FF) + amount));
-        const b = Math.min(255, Math.max(0, (num & 0x0000FF) + amount));
-        return `#${(1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1)}`;
-    }
-
-    function renderTrendLineChart(trendData) {
-        if (!elements.trendLineChart) return;
-        if (!trendData || trendData.length === 0) {
-            elements.trendLineChart.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:40px;">暂无数据</div>';
-            return;
-        }
-
-        const width = elements.trendLineChart.clientWidth || 500;
-        const height = 280;
-        const padding = { top: 20, right: 20, bottom: 30, left: 40 };
-        const chartWidth = width - padding.left - padding.right;
-        const chartHeight = height - padding.top - padding.bottom;
-
-        const values = trendData.map(d => d.orderCount || 0);
-        const maxValue = Math.max(...values, 1);
-        const points = trendData.map((d, i) => {
-            let x;
-            if (trendData.length === 1) {
-                x = padding.left + chartWidth / 2;
-            } else {
-                x = padding.left + (i / (trendData.length - 1)) * chartWidth;
-            }
-            const y = padding.top + chartHeight - (d.orderCount / maxValue) * chartHeight;
-            return { x, y, value: d.orderCount, date: d.date };
-        });
-
-        let linePath = `M ${points[0].x} ${points[0].y}`;
-        let areaPath = `M ${points[0].x} ${padding.top + chartHeight} L ${points[0].x} ${points[0].y}`;
-
-        for (let i = 1; i < points.length; i++) {
-            linePath += ` L ${points[i].x} ${points[i].y}`;
-            areaPath += ` L ${points[i].x} ${points[i].y}`;
-        }
-        areaPath += ` L ${points[points.length - 1].x} ${padding.top + chartHeight} Z`;
-
-        let gridLines = '';
-        const gridCount = 4;
-        for (let i = 0; i <= gridCount; i++) {
-            const y = padding.top + (i / gridCount) * chartHeight;
-            const value = Math.round(maxValue - (i / gridCount) * maxValue);
-            gridLines += `<line class="grid-line" x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" />`;
-            gridLines += `<text x="${padding.left - 8}" y="${y + 4}" class="chart-label" text-anchor="end">${value}</text>`;
-        }
-
-        let xLabels = '';
-        const labelStep = Math.max(1, Math.floor(points.length / 7));
-        points.forEach((p, i) => {
-            if (i % labelStep === 0 || i === points.length - 1) {
-                const dateStr = p.date.slice(5);
-                xLabels += `<text x="${p.x}" y="${height - 8}" class="chart-label">${dateStr}</text>`;
-            }
-        });
-
-        let dataPoints = '';
-        points.forEach(p => {
-            dataPoints += `<circle class="data-point" cx="${p.x}" cy="${p.y}" r="5">
-                <title>${p.date}: ${p.value}单</title>
-            </circle>`;
-        });
-
-        const svg = `
-            <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
-                <defs>
-                    <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
-                        <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
-                    </linearGradient>
-                    <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                        <stop offset="0%" style="stop-color:#6366f1;stop-opacity:0.2" />
-                        <stop offset="100%" style="stop-color:#6366f1;stop-opacity:0" />
-                    </linearGradient>
-                </defs>
-                ${gridLines}
-                <path class="trend-area" d="${areaPath}" />
-                <path class="trend-line" d="${linePath}" />
-                ${dataPoints}
-                ${xLabels}
-            </svg>
-        `;
-
-        elements.trendLineChart.innerHTML = svg;
+            listEl.appendChild(frag);
+        } catch (err) { console.error(err); }
     }
 
     document.addEventListener('click', (e) => {
-        const tab = document.getElementById('data-dashboard-tab');
-        if (!tab || tab.classList.contains('hidden')) return;
-
-        const btn = e.target.closest('.toggle-btn');
-        if (btn && btn.dataset.range) {
-            const range = btn.dataset.range;
-            loadDashboardStats(range);
-        }
+        if (e.target.id === 'open-subscribe-btn') openSubscribeModal();
+        if (e.target.id === 'save-subscribe-btn') saveSubscriptions();
     });
 
-    window.addEventListener('resize', () => {
-        const tab = document.getElementById('data-dashboard-tab');
-        if (tab && !tab.classList.contains('hidden')) {
-            loadDashboardStats();
+    async function saveSubscriptions() {
+        const user = AppState.getUser();
+        if (!user) return;
+        const checks = document.querySelectorAll('#subscribe-types-list input[type="checkbox"]');
+        const selected = Array.from(checks).filter(c => c.checked).map(c => c.value);
+        try {
+            const { data: subs } = await Api.getSubscriptions(user.username);
+            const current = (subs || []).map(s => s.event_type);
+            for (const type of selected) {
+                if (!current.includes(type)) {
+                    await Api.subscribe(user.username, type);
+                }
+            }
+            for (const type of current) {
+                if (!selected.includes(type)) {
+                    await Api.unsubscribe(user.username, type);
+                }
+            }
+            const { data: newSubs } = await Api.getSubscriptions(user.username);
+            AppState.setUserSubscriptions(newSubs || []);
+            showToast('�����ѱ���');
+            document.getElementById('subscribe-modal')?.classList.add('hidden');
+        } catch (err) {
+            showToast('����ʧ��');
         }
+    }
+
+    // --- Notifications ---
+    async function loadNotifications() {
+        const listEl = document.getElementById('notifications-list');
+        const badgeEl = document.getElementById('notif-badge');
+        if (!listEl) return;
+        const user = AppState.getUser();
+        if (!user) return;
+        try {
+            const { data } = await Api.getNotifications(user.username);
+            if (!data || data.length === 0) {
+                listEl.innerHTML = '<p style="color:#64748b;padding:20px;text-align:center;">����֪ͨ</p>';
+                if (badgeEl) badgeEl.classList.add('hidden');
+                return;
+            }
+            const unread = data.filter(n => n.is_read !== 1).length;
+            if (badgeEl) {
+                if (unread > 0) {
+                    badgeEl.classList.remove('hidden');
+                    badgeEl.textContent = unread > 9 ? '9+' : unread;
+                } else badgeEl.classList.add('hidden');
+            }
+            const frag = document.createDocumentFragment();
+            for (const n of data) {
+                const item = document.createElement('div');
+                item.className = 'notification-item';
+                if (n.is_read !== 1) item.style.background = '#eff6ff';
+                const iconMap = { event: 'fa-calendar-alt', order: 'fa-box', system: 'fa-bell' };
+                item.innerHTML = `
+                    <div style="display:flex;align-items:flex-start;gap:10px;">
+                        <div class="notif-icon" style="background:${n.type === 'event' ? '#6366f1' : (n.type === 'order' ? '#10b981' : '#f59e0b')}">
+                            <i class="fas ${iconMap[n.type] || 'fa-bell'}"></i>
+                        </div>
+                        <div style="flex:1;">
+                            <div style="font-size:0.9rem;font-weight:500;color:#0f172a;margin-bottom:4px;">${n.title || '֪ͨ'}</div>
+                            ${n.content ? `<div style="font-size:0.8rem;color:#475569;">${n.content}</div>` : ''}
+                            <div style="font-size:0.7rem;color:#94a3b8;margin-top:4px;">${n.created_at || ''}</div>
+                        </div>
+                        ${n.is_read !== 1 ? '<span class="unread-dot"></span>' : ''}
+                    </div>
+                `;
+                if (n.is_read !== 1) {
+                    item.onclick = async () => {
+                        try {
+                            await Api.markNotificationRead(n.id, user.username);
+                            item.style.background = '';
+                            item.querySelector('.unread-dot')?.remove();
+                            const curCount = parseInt(badgeEl?.textContent || '0');
+                            if (curCount > 1) badgeEl.textContent = curCount - 1;
+                            else badgeEl?.classList.add('hidden');
+                        } catch (e) { /* ignore */ }
+                    };
+                }
+                frag.appendChild(item);
+            }
+            listEl.innerHTML = '';
+            listEl.appendChild(frag);
+        } catch (err) {
+            listEl.innerHTML = '<p style="color:#ef4444;padding:20px;text-align:center;">����ʧ��</p>';
+        }
+    }
+
+    // --- Weather Card ---
+    async function loadWeatherCard() {
+        const card = document.getElementById('weather-card');
+        if (!card) return;
+        try {
+            const { data } = await Api.getWeather();
+            if (!data) return;
+            AppState.setCurrentWeather(data);
+            const weatherIcons = { '��': 'fa-sun', '����': 'fa-cloud-sun', '��': 'fa-cloud', 'С��': 'fa-cloud-rain', '����': 'fa-cloud-showers-heavy', '����': 'fa-cloud-showers-heavy', '������': 'fa-bolt' };
+            const tips = [];
+            if (parseInt(data.temperature) > 30) tips.push('?? ����ע�����');
+            if (parseInt(data.temperature) < 5) tips.push('?? ��������ע�Ᵽů');
+            if (data.weather.includes('��')) tips.push('? �ǵô�ɡ');
+            if (data.wind.includes('6��') || data.wind.includes('7��') || data.wind.includes('8��')) tips.push('?? ���ע�ⰲȫ');
+            card.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" id="weather-toggle">
+                    <div>
+                        <div style="font-size:1.5rem;font-weight:bold;color:#0f172a;">
+                            <i class="fas ${weatherIcons[data.weather] || 'fa-cloud'}"></i> ${data.temperature}��C ${data.weather}
+                        </div>
+                        <div style="font-size:0.8rem;color:#64748b;margin-top:4px;">${data.wind} �� ${data.humidity || ''}</div>
+                    </div>
+                    <i class="fas fa-chevron-up" style="color:#94a3b8;" id="weather-chevron"></i>
+                </div>
+                <div id="weather-detail" style="${AppState.getWeatherCollapsed() ? 'display:none;' : 'display:block;'}margin-top:12px;padding-top:12px;border-top:1px solid #e2e8f0;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:0.8rem;color:#475569;">
+                        <div><i class="fas fa-thermometer-half" style="color:#ef4444;"></i> ��� ${data.feels_like || data.temperature}��C</div>
+                        <div><i class="fas fa-tint" style="color:#3b82f6;"></i> ʪ�� ${data.humidity || '--'}</div>
+                        <div><i class="fas fa-wind" style="color:#06b6d4;"></i> ${data.wind || '--'}</div>
+                        <div><i class="fas fa-eye" style="color:#8b5cf6;"></i> �ܼ��� ${data.visibility || '--'}</div>
+                    </div>
+                    ${tips.length > 0 ? `<div style="margin-top:10px;padding:8px;background:#fef3c7;border-radius:6px;font-size:0.8rem;color:#92400e;">${tips.join(' �� ')}</div>` : ''}
+                </div>
+            `;
+            const toggle = document.getElementById('weather-toggle');
+            const chevron = document.getElementById('weather-chevron');
+            const detail = document.getElementById('weather-detail');
+            if (toggle) toggle.onclick = () => {
+                const collapsed = AppState.toggleWeatherCollapsed();
+                if (detail) detail.style.display = collapsed ? 'none' : 'block';
+                if (chevron) {
+                    chevron.className = collapsed ? 'fas fa-chevron-down' : 'fas fa-chevron-up';
+                    chevron.style.color = '#94a3b8';
+                }
+            };
+        } catch (err) { console.error('Weather load failed:', err); }
+    }
+
+    // --- Package Size Guide ---
+    const packageGuideBtn = document.getElementById('pkg-guide-btn');
+    const packageGuideModal = document.getElementById('pkg-guide-modal');
+    if (packageGuideBtn) packageGuideBtn.onclick = () => packageGuideModal?.classList.remove('hidden');
+    const closeGuideBtns = document.querySelectorAll('.close-guide, [data-close-guide]');
+    closeGuideBtns.forEach(b => b.onclick = () => packageGuideModal?.classList.add('hidden'));
+
+    // --- Private Messaging ---
+    let msgPollInterval = null;
+
+    async function loadMessages() {
+        const convList = document.getElementById('msg-conversations');
+        const threadArea = document.getElementById('msg-thread');
+        if (!convList) return;
+        const user = AppState.getUser();
+        if (!user) return;
+        try {
+            const { data } = await Api.getConversations(user.username);
+            if (!data || data.length === 0) {
+                convList.innerHTML = '<p style="color:#64748b;padding:20px;text-align:center;">���޶Ի������������Ƭ˽�ſ�ʼ����</p>';
+                return;
+            }
+            convList.innerHTML = '';
+            const frag = document.createDocumentFragment();
+            for (const c of data) {
+                const item = document.createElement('div');
+                item.className = 'msg-conv-item';
+                const peer = c.participant_1 === user.username ? c.participant_2 : c.participant_1;
+                item.dataset.peer = peer;
+                item.dataset.threadId = c.thread_id;
+                const isActive = AppState.getCurrentMsgPeer() === peer;
+                if (isActive) item.classList.add('active');
+                const unread = (c.unread_count || 0) > 0;
+                item.innerHTML = '<div style="display:flex;align-items:center;gap:10px;"><div class="msg-avatar">' + (peer[0]?.toUpperCase() || '?') + '</div><div style="flex:1;"><div style="font-size:0.9rem;font-weight:500;color:#0f172a;">' + peer + '</div><div style="font-size:0.75rem;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;">' + (c.last_message || '��ʼ����') + '</div></div>' + (unread ? '<span class="unread-badge">' + c.unread_count + '</span>' : '') + '</div>';
+                item.onclick = () => openThread(peer, c.thread_id);
+                frag.appendChild(item);
+            }
+            convList.appendChild(frag);
+            if (!AppState.getCurrentMsgPeer() && data.length > 0) {
+                const first = data[0];
+                const firstPeer = first.participant_1 === user.username ? first.participant_2 : first.participant_1;
+                openThread(firstPeer, first.thread_id);
+            }
+        } catch (err) {
+            convList.innerHTML = '<p style="color:#ef4444;padding:20px;text-align:center;">����ʧ��</p>';
+        }
+        if (!msgPollInterval) {
+            msgPollInterval = setInterval(pollUnreadMsg, 30000);
+            AppState.setMsgPollInterval(msgPollInterval);
+        }
+    }
+
+    async function pollUnreadMsg() {
+        const user = AppState.getUser();
+        if (!user) return;
+        try {
+            const { data } = await Api.getUnreadMsgCount(user.username);
+            const badge = document.getElementById('msg-badge');
+            if (badge) {
+                const cnt = data?.total || 0;
+                if (cnt > 0) {
+                    badge.classList.remove('hidden');
+                    badge.textContent = cnt > 9 ? '9+' : cnt;
+                } else badge.classList.add('hidden');
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    window.openChatWith = async (peer) => {
+        if (!peer) return;
+        elements.navItems.forEach(i => i.classList.remove('active'));
+        const msgNav = Array.from(elements.navItems).find(i => i.dataset.tab === 'messages');
+        msgNav?.classList.add('active');
+        elements.viewSections.forEach(v => v.classList.add('hidden'));
+        document.getElementById('messages-tab')?.classList.remove('hidden');
+        const user = AppState.getUser();
+        if (!user) return;
+        try {
+            const { data: convs } = await Api.getConversations(user.username);
+            let threadId = null;
+            const existing = convs?.find(c =>
+                (c.participant_1 === user.username && c.participant_2 === peer) ||
+                (c.participant_2 === user.username && c.participant_1 === peer));
+            if (existing) threadId = existing.thread_id;
+            await loadMessages();
+            openThread(peer, threadId);
+        } catch (err) { console.error(err); }
+    };
+
+    async function openThread(peer, threadId) {
+        AppState.setCurrentMsgPeer(peer);
+        AppState.setCurrentMsgThread(threadId);
+        const header = document.getElementById('msg-thread-header');
+        const msgList = document.getElementById('msg-list');
+        const input = document.getElementById('msg-input');
+        const sendBtn = document.getElementById('msg-send-btn');
+        if (header) {
+            header.innerHTML = '<div style="display:flex;align-items:center;gap:10px;"><div class="msg-avatar">' + (peer[0]?.toUpperCase() || '?') + '</div><div><div style="font-weight:500;color:#0f172a;">' + peer + '</div><div style="font-size:0.75rem;color:#64748b;">����</div></div></div>';
+        }
+        if (!threadId) {
+            if (msgList) msgList.innerHTML = '<p style="color:#64748b;padding:20px;text-align:center;">���͵�һ����Ϣ��ʼ�Ի�</p>';
+            setupMsgSend(peer, null);
+            updateActiveConvHighlight(peer);
+            return;
+        }
+        try {
+            const user = AppState.getUser();
+            const { data } = await Api.getThreadMessages(threadId);
+            await Api.markThreadRead(threadId, user.username);
+            if (msgList) {
+                msgList.innerHTML = '';
+                const frag = document.createDocumentFragment();
+                for (const m of data || []) {
+                    const isMine = m.sender === user.username;
+                    const bubble = document.createElement('div');
+                    bubble.className = 'msg-bubble ' + (isMine ? 'msg-mine' : 'msg-theirs');
+                    bubble.innerHTML = '<div style="font-size:0.7rem;color:' + (isMine ? '#c7d2fe' : '#94a3b8') + ';margin-bottom:3px;">' + (isMine ? '��' : m.sender) + '</div><div>' + m.content + '</div><div style="font-size:0.65rem;color:' + (isMine ? '#c7d2fe' : '#94a3b8') + ';margin-top:4px;text-align:right;">' + formatMsgTime(m.created_at) + '</div>';
+                    frag.appendChild(bubble);
+                }
+                msgList.appendChild(frag);
+                msgList.scrollTop = msgList.scrollHeight;
+            }
+            setupMsgSend(peer, threadId);
+            updateActiveConvHighlight(peer);
+        } catch (err) { console.error(err); }
+    }
+
+    function updateActiveConvHighlight(peer) {
+        document.querySelectorAll('.msg-conv-item').forEach(el => {
+            el.classList.toggle('active', el.dataset.peer === peer);
+        });
+    }
+
+    function setupMsgSend(peer, threadId) {
+        const input = document.getElementById('msg-input');
+        const sendBtn = document.getElementById('msg-send-btn');
+        const form = document.getElementById('msg-send-form');
+        if (!input) return;
+        const draft = AppState.getMsgDraft(peer) || '';
+        input.value = draft;
+        input.oninput = () => AppState.setMsgDraft(peer, input.value);
+        const doSend = async () => {
+            const text = input.value.trim();
+            if (!text) return;
+            const user = AppState.getUser();
+            if (!user) return;
+            try {
+                await Api.sendMessage(user.username, peer, text);
+                input.value = '';
+                AppState.setMsgDraft(peer, '');
+                const newThreadId = threadId || (await findThreadId(user.username, peer));
+                AppState.setCurrentMsgThread(newThreadId);
+                openThread(peer, newThreadId);
+                loadMessages();
+            } catch (err) { showToast('����ʧ��'); }
+        };
+        if (sendBtn) sendBtn.onclick = doSend;
+        if (form) form.onsubmit = (e) => { e.preventDefault(); doSend(); };
+    }
+
+    async function findThreadId(u1, u2) {
+        try {
+            const { data } = await Api.getConversations(u1);
+            const c = data?.find(x =>
+                (x.participant_1 === u1 && x.participant_2 === u2) ||
+                (x.participant_2 === u1 && x.participant_1 === u2));
+            return c?.thread_id;
+        } catch { return null; }
+    }
+
+    function formatMsgTime(t) {
+        if (!t) return '';
+        try {
+            const d = new Date(t);
+            return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+        } catch { return ''; }
+    }
+
+    // --- Event Banners ---
+    async function loadEventBanners() {
+        const bannerEl = document.getElementById('event-banners');
+        if (!bannerEl) return;
+        try {
+            const { data } = await Api.getEvents();
+            const today = new Date();
+            const tStr = formatDateStr(today);
+            const upcoming = (data || [])
+                .filter(e => e.date >= tStr)
+                .sort((a, b) => a.date.localeCompare(b.date))
+                .slice(0, 3);
+            if (upcoming.length === 0) {
+                bannerEl.innerHTML = '';
+                return;
+            }
+            const typeColors = { academic: '#3b82f6', cultural: '#a855f7', sports: '#f59e0b', volunteer: '#10b981', other: '#6b7280' };
+            const typeLabels = { academic: 'ѧ��', cultural: '����', sports: '����', volunteer: '־Ը', other: '����' };
+            bannerEl.innerHTML = '';
+            const frag = document.createDocumentFragment();
+            for (const ev of upcoming) {
+                const banner = document.createElement('div');
+                banner.className = 'event-banner';
+                const bg = typeColors[ev.type] || '#6b7280';
+                banner.style.cssText = 'background: linear-gradient(135deg, ' + bg + 'dd, ' + bg + '99);';
+                banner.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;"><div><div style="font-size:0.7rem;opacity:0.9;background:rgba(255,255,255,0.2);padding:2px 8px;border-radius:10px;display:inline-block;">' + (typeLabels[ev.type] || '����') + '</div><div style="font-size:1rem;font-weight:bold;margin-top:6px;">' + ev.title + '</div><div style="font-size:0.8rem;opacity:0.9;margin-top:4px;"><i class="fas fa-calendar"></i> ' + ev.date + ' ' + (ev.time || '') + ' �� <i class="fas fa-map-marker-alt"></i> ' + (ev.location || '--') + '</div></div><i class="fas fa-chevron-right" style="font-size:1.2rem;opacity:0.8;"></i></div>';
+                banner.onclick = () => {
+                    elements.navItems.forEach(i => i.classList.remove('active'));
+                    const calNav = Array.from(elements.navItems).find(i => i.dataset.tab === 'event-calendar');
+                    calNav?.classList.add('active');
+                    elements.viewSections.forEach(v => v.classList.add('hidden'));
+                    document.getElementById('event-calendar-tab')?.classList.remove('hidden');
+                    const [y, m, d] = ev.date.split('-').map(Number);
+                    AppState.setCurrentCalendarDate(new Date(y, m - 1, d));
+                    loadEventCalendar();
+                };
+                frag.appendChild(banner);
+            }
+            bannerEl.appendChild(frag);
+        } catch (err) { console.error('Event banners failed:', err); }
+    }
+
+    // --- Create Event Form ---
+    const eventForm = document.getElementById('create-event-form');
+    if (eventForm) {
+        eventForm.onsubmit = async (e) => {
+            e.preventDefault();
+            const user = AppState.getUser();
+            if (!AppState.isAdmin()) { showToast('������Ա�ɷ����'); return; }
+            const payload = {
+                title: document.getElementById('event-title').value.trim(),
+                date: document.getElementById('event-date').value,
+                time: document.getElementById('event-time').value,
+                location: document.getElementById('event-location').value.trim(),
+                type: document.getElementById('event-type').value,
+                organizer: document.getElementById('event-organizer').value.trim() || user.real_name || user.username,
+                description: document.getElementById('event-desc').value.trim()
+            };
+            if (!payload.title || !payload.date) { showToast('����д���������'); return; }
+            try {
+                await Api.createEvent(payload);
+                showToast('������ɹ�');
+                eventForm.reset();
+                loadEventBanners();
+            } catch (err) { showToast('����ʧ��'); }
+        };
+    }
+
+    // --- Data Dashboard ---
+    async function loadDashboardStats(range) {
+        const chartOrders = document.getElementById('chart-orders');
+        const chartRevenue = document.getElementById('chart-revenue');
+        const statCards = document.querySelectorAll('.stat-card-value');
+        const rangeBtns = document.querySelectorAll('[data-range]');
+        rangeBtns.forEach(b => b.classList.toggle('active', b.dataset.range === range));
+        AppState.setCurrentStatsRange(range);
+        try {
+            const { data } = await Api.getStats(range);
+            if (!data) return;
+            if (statCards[0]) statCards[0].textContent = data.total_orders || 0;
+            if (statCards[1]) statCards[1].textContent = data.completed_orders || 0;
+            if (statCards[2]) statCards[2].textContent = (data.total_revenue || 0).toFixed(2) + ' Ԫ';
+            if (statCards[3]) statCards[3].textContent = data.active_users || 0;
+            if (chartOrders && data.daily_orders) {
+                const max = Math.max(...data.daily_orders.map(d => d.count), 1);
+                chartOrders.innerHTML = '';
+                const ofrag = document.createDocumentFragment();
+                for (const d of data.daily_orders) {
+                    const bar = document.createElement('div');
+                    bar.className = 'chart-bar';
+                    bar.innerHTML = '<div class="chart-bar-fill" style="height:' + (d.count / max * 100) + '%"></div><div class="chart-bar-label">' + d.label + '</div><div class="chart-bar-value">' + d.count + '</div>';
+                    ofrag.appendChild(bar);
+                }
+                chartOrders.appendChild(ofrag);
+            }
+            if (chartRevenue && data.daily_revenue) {
+                const max = Math.max(...data.daily_revenue.map(d => d.revenue), 1);
+                chartRevenue.innerHTML = '';
+                const rfrag = document.createDocumentFragment();
+                for (const d of data.daily_revenue) {
+                    const bar = document.createElement('div');
+                    bar.className = 'chart-bar';
+                    bar.innerHTML = '<div class="chart-bar-fill chart-revenue" style="height:' + (d.revenue / max * 100) + '%"></div><div class="chart-bar-label">' + d.label + '</div><div class="chart-bar-value">��' + d.revenue.toFixed(0) + '</div>';
+                    rfrag.appendChild(bar);
+                }
+                chartRevenue.appendChild(rfrag);
+            }
+        } catch (err) { console.error('Dashboard failed:', err); }
+    }
+
+    document.querySelectorAll('[data-range]').forEach(btn => {
+        btn.onclick = () => loadDashboardStats(btn.dataset.range);
     });
 
-    // Init
+    // --- Final: update UI ---
     updateUIForLogin();
 });
